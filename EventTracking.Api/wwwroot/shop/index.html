@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f6f2" />
+    <title>Little Things — Demo shop</title>
+    <link rel="stylesheet" href="/shop/shop.css" />
+    <script src="/shop/shop.js" defer></script>
+  </head>
+  <body>
+    <header class="header">
+      <a class="brand" href="/shop/index.html"
+        ><span class="brand-icon" aria-hidden="true">✳</span> little things<span
+          class="brand-dot"
+          >.</span
+        ></a
+      >
+      <span class="demo-badge">A make-believe shop</span>
+      <a class="bag-link" href="#bag">Your bag <span id="bag-count">0</span></a>
+    </header>
+    <main>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">SMALL GOODS. GOOD DAYS.</p>
+          <h1>A few little things<br />to make your day.</h1>
+          <p class="intro-copy">
+            Everyday favorites, thoughtfully imagined.<br />Take a look around.
+            Everything here is pretend.
+          </p>
+        </div>
+        <div class="intro-stamp" aria-hidden="true">
+          <span>THE LITTLE</span><b>☺</b><span>THINGS CLUB</span>
+        </div>
+      </section>
+      <div class="shop-layout">
+        <section class="catalog" aria-labelledby="catalog-title">
+          <div class="section-heading">
+            <h2 id="catalog-title">The everyday collection</h2>
+            <span>03 good things</span>
+          </div>
+          <div id="products" class="products">
+            <p>Unpacking the collection…</p>
+          </div>
+          <p class="catalog-note">
+            <span aria-hidden="true">↗</span> Just exploring? Add something to
+            your bag and try a pretend checkout.
+          </p>
+        </section>
+        <aside class="bag" id="bag" aria-labelledby="bag-title">
+          <div class="section-heading">
+            <h2 id="bag-title">Your bag</h2>
+            <span class="small-label">ALL PRETEND</span>
+          </div>
+          <div id="cart-items">
+            <p class="empty-cart">
+              A little room for something good.<br />Your bag is empty.
+            </p>
+          </div>
+          <div class="total-row">
+            <span>Total</span><strong id="cart-total">$0.00</strong>
+          </div>
+          <button id="checkout" class="primary" disabled>
+            Try demo checkout <span aria-hidden="true">↗</span>
+          </button>
+          <p class="bag-note">No payment. No shipping. Just a demo.</p>
+          <p id="shop-status" role="status" class="status"></p>
+        </aside>
+      </div>
+      <section class="event-panel" aria-labelledby="event-title">
+        <div class="event-heading">
+          <div>
+            <p class="eyebrow">BEHIND THE SCENES</p>
+            <h2 id="event-title">Your visit, in events.</h2>
+            <p>Browser actions and confirmed demo orders, side by side.</p>
+          </div>
+          <span id="feed-status" class="feed-status" role="status"
+            >Connecting…</span
+          >
+        </div>
+        <div class="event-toolbar">
+          <div class="legend">
+            <span
+              ><i class="dot browser-dot"></i> Browser
+              <b id="browser-count">0</b></span
+            ><span
+              ><i class="dot server-dot"></i> Server
+              <b id="server-count">0</b></span
+            >
+          </div>
+          <span>Latest 50 · this browser session</span>
+        </div>
+        <div id="events" class="events">
+          <p class="feed-empty">Your first event is on its way.</p>
+        </div>
+        <p id="tracking-status" class="tracking-status" role="status"></p>
+      </section>
+    </main>
+    <footer>
+      <span
+        >little things.
+        <span class="muted">A tiny shop with a story to tell.</span></span
+      ><span>Demo orders & events reset when the server restarts.</span>
+    </footer>
+    <dialog id="checkout-dialog" aria-labelledby="checkout-title">
+      <p class="eyebrow">ONE LAST LITTLE STEP</p>
+      <h2 id="checkout-title">Make it make-believe.</h2>
+      <p>
+        This places a fake order. You won’t be charged, and nothing will be
+        shipped.
+      </p>
+      <div class="total-row">
+        <span>Demo order total</span><strong id="checkout-total"></strong>
+      </div>
+      <p id="order-error" class="order-error" role="alert"></p>
+      <button id="place-order" class="primary">Place demo order</button>
+      <button id="cancel-checkout" class="secondary">Keep browsing</button>
+    </dialog>
+    <dialog id="receipt-dialog" aria-labelledby="receipt-title">
+      <span class="receipt-icon" aria-hidden="true">✓</span>
+      <p class="eyebrow">A LITTLE SUCCESS</p>
+      <h2 id="receipt-title">Your pretend order is in.</h2>
+      <p>
+        Thanks for stopping by. No money moved and no delivery is on its way.
+      </p>
+      <p id="receipt-details" class="receipt-details"></p>
+      <button id="close-receipt" class="primary">
+        Back to the little things
+      </button>
+    </dialog>
+  </body>
+</html>
