@@ -5,4 +5,7 @@ public sealed record TrackedEvent(
     string EventType,
     string? UserId,
     DateTimeOffset OccurredAt,
-    DateTimeOffset IngestedAt);
+    DateTimeOffset IngestedAt,
+    string Source = "api",
+    string? SessionId = null,
+    IReadOnlyDictionary<string, object?>? Properties = null);

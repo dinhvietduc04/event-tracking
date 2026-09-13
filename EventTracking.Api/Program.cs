@@ -1,5 +1,6 @@
 using EventTracking.Api.Models;
 using EventTracking.Api.Services;
+using EventTracking.Api.Demo;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -7,6 +8,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSingleton<IEventQueue, EventQueue>();
 builder.Services.AddSingleton<IEventStore, InMemoryEventStore>();
 builder.Services.AddHostedService<EventIngestionWorker>();
+builder.Services.AddSingleton<DemoShop>();
 
 var app = builder.Build();
 
@@ -16,6 +18,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("DemoShop:Enabled"))
+{
+    app.UseStaticFiles();
+    app.MapGet("/", () => Results.Redirect("/shop/"));
+    app.MapGet("/shop/", () => Results.Redirect("/shop/index.html"));
+    app.MapDemoShop();
+}
 
 app.MapPost("/events", async (TrackEventRequest request, IEventQueue eventQueue, CancellationToken cancellationToken) =>
 {

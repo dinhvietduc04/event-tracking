@@ -6,6 +6,7 @@ public interface IEventStore
 {
     void Add(TrackedEvent trackedEvent);
     IReadOnlyCollection<EventSummary> GetSummary(DateTimeOffset? from, DateTimeOffset? to, string? userId);
+    IReadOnlyCollection<TrackedEvent> GetRecent(string sessionId);
 }
 
 public sealed class InMemoryEventStore : IEventStore
@@ -18,6 +19,15 @@ public sealed class InMemoryEventStore : IEventStore
         lock (_lock)
         {
             _events.Add(trackedEvent);
+        }
+    }
+
+    public IReadOnlyCollection<TrackedEvent> GetRecent(string sessionId)
+    {
+        lock (_lock)
+        {
+            return _events.Where(item => item.SessionId == sessionId)
+                .TakeLast(50).Reverse().ToArray();
         }
     }
 

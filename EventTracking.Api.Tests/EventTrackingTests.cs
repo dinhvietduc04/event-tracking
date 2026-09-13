@@ -25,7 +25,9 @@ public sealed class EventTrackingTests : IClassFixture<WebApplicationFactory<Pro
         await client.PostAsJsonAsync("/events", new TrackEventRequest("login", "user-1", now));
 
         IReadOnlyList<EventSummary>? summary = await Eventually(async () =>
-            await client.GetFromJsonAsync<IReadOnlyList<EventSummary>>("/analytics/events"));
+            await client.GetFromJsonAsync<IReadOnlyList<EventSummary>>("/analytics/events"),
+            items => items.Any(item => item.EventType == "page_view" && item.Count == 2)
+                && items.Any(item => item.EventType == "login" && item.Count == 1));
 
         Assert.NotNull(summary);
         Assert.Contains(summary!, item => item.EventType == "page_view" && item.Count == 2);
@@ -42,7 +44,8 @@ public sealed class EventTrackingTests : IClassFixture<WebApplicationFactory<Pro
         await client.PostAsJsonAsync("/events", new TrackEventRequest("purchase", "user-b", now));
 
         IReadOnlyList<EventSummary>? summary = await Eventually(async () =>
-            await client.GetFromJsonAsync<IReadOnlyList<EventSummary>>("/analytics/users/user-a"));
+            await client.GetFromJsonAsync<IReadOnlyList<EventSummary>>("/analytics/users/user-a"),
+            items => items.Any(item => item.EventType == "purchase" && item.Count == 1));
 
         Assert.NotNull(summary);
         Assert.Contains(summary!, item => item.EventType == "purchase" && item.Count == 1);
@@ -59,12 +62,14 @@ public sealed class EventTrackingTests : IClassFixture<WebApplicationFactory<Pro
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    private static async Task<T?> Eventually<T>(Func<Task<T?>> read, int retries = 20, int delayMs = 50)
+    private static async Task<IReadOnlyList<EventSummary>?> Eventually(
+        Func<Task<IReadOnlyList<EventSummary>?>> read, Func<IReadOnlyList<EventSummary>, bool> complete,
+        int retries = 20, int delayMs = 50)
     {
         for (int i = 0; i < retries; i++)
         {
-            T? result = await read();
-            if (result is IReadOnlyList<EventSummary> list && list.Count > 0)
+            IReadOnlyList<EventSummary>? result = await read();
+            if (result is not null && complete(result))
             {
                 return result;
             }
