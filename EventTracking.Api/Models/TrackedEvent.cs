@@ -8,4 +8,7 @@ public sealed record TrackedEvent(
     DateTimeOffset IngestedAt,
     string Source = "api",
     string? SessionId = null,
-    IReadOnlyDictionary<string, object?>? Properties = null);
+    IReadOnlyDictionary<string, object?>? Properties = null,
+    string ProjectId = "demo-shop",
+    string? AnonymousId = null,
+    int SchemaVersion = 1);

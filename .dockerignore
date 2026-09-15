@@ -1,0 +1,9 @@
+**/bin
+**/obj
+.git
+.env
+.env.*
+**/*.local.json
+TestResults
+EventTracking.Api.Tests
+docs
