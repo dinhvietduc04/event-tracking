@@ -5,6 +5,7 @@ Status, September 15, 2026: hosting is not configured. At the user's direction, 
 ## Prepared artifacts
 
 - `Dockerfile.vercel` publishes the .NET 10 API and runs it as the image's non-root user.
+- `vercel.json` explicitly selects the container runtime and routes every request to the API service. Keep both files at Vercel's configured project root (`./`).
 - `Storage__Profile=Hosted` persists queryable events and identities before returning 200; no inbox or database worker is created for hosted requests.
 - The application honors `PORT`; set Vercel's project `PORT=8080` to match the image default.
 - `scripts/Test-HostedSpike.ps1` submits 12 concurrent duplicate requests, verifies immediate count=1, waits an explicit idle interval and checks persistence again. It records an ignored `hosted-spike.local.json` evidence file without keys.
@@ -32,6 +33,14 @@ The script's `actualScaleDownVerified`, `tlsDatabaseVerified` and `providerQuota
 Npgsql 10 can attempt GSSAPI on Linux images without Kerberos libraries; explicitly disabling GSS avoids that optional-protocol warning when the intended transport is TLS or local password authentication. This does not disable TLS. [Npgsql 10 release notes](https://www.npgsql.org/doc/release-notes/10.0.html).
 
 ## Local evidence and open items
+
+### Deployment routing diagnosis, September 15, 2026
+
+The user deployed `https://event-tracking-ruby.vercel.app/`. HTTP checks of `/`, `/health/live`, `/health/ready`, and `/shop/index.html` returned Vercel's `x-vercel-error: NOT_FOUND`. Requests are not reaching the API; this result does not establish a Neon connection failure. The deployed commit and build logs must be checked to establish why no API route is available.
+
+The repository now includes an explicit container service and catch-all rewrite, following [Vercel's ASP.NET Core deployment guide](https://vercel.com/kb/guide/dot-net-asp-net-on-vercel-with-docker). Deploy the commit containing `vercel.json` with root `./` and `PORT=8080`, then verify `/health/live` and `/health/ready`. Confirm the build log actually builds `Dockerfile.vercel`; a successful static deployment does not verify API startup. This configuration has not yet been verified on Vercel.
+
+The production API intentionally has no homepage while `DemoShop__Enabled` is false. A successful health response is the initial deployment check; the development shop is a separate opt-in feature.
 
 Local verification built and started this Dockerfile, honored `PORT=8181`, ran as UID 1654, committed one queryable event across 12 concurrent requests, and retained it through a container restart. The local PostgreSQL connection reported TLS=false, as expected for that local setup. The smoke script was run with `IdleSeconds=0` locally; no cloud scale-down was simulated or claimed.
 
