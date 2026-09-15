@@ -1,6 +1,6 @@
 # Analytics and Event Tracking Platform: project plan
 
-Status: proposed roadmap, September 13, 2026; goal, pace, and stack direction confirmed. Milestones describe future work unless explicitly marked as existing.
+Status: milestones 1–2 implemented locally, September 15, 2026. At the user's direction, the hosted deployment spike is prepared but not deployed because hosting is not configured. Milestones 3–7 describe future work. See [milestone 2 implementation and evidence](MILESTONE_2.md), [hosting spike preparation](HOSTING_SPIKE.md), and the [current API contract](API_V1.md).
 
 Build a platform where developers send application events and product teams explore usage, conversion, and retention. Each milestone should produce a runnable demo and evidence that its behavior is correct.
 
@@ -29,7 +29,7 @@ An early shop demo is now implemented at `/shop/index.html`: three products, a q
 
 This is a partial demonstration of the milestone 4 experience. The shop backend currently shares the API process, and browser telemetry is best effort; it does not implement the future authenticated SDK, persistence, or hosted production profile.
 
-Current limitations: process restarts lose queued and stored events; general ingestion/analytics requests have no authentication or project scope; general ingestion retries create new IDs and can double-count; queue memory has no bound. The general ingestion response also advertises an event URL that has no matching read endpoint. Demo order deduplication and visit cookies do not replace production persistence or authorization.
+Milestone 0 limitations included unauthenticated/unscoped requests, an unbounded queue, volatile storage, retry double-counting, and a nonexistent event status URL. Milestone 1 added project access, bounded ingestion and the v1 contract. Milestone 2 now persists general API events and credentials in PostgreSQL and deduplicates stable-ID retries in both durable profiles. The independent local shop and explicit Volatile profile still lose their memory state on restart. Demo order deduplication and visit cookies do not replace production persistence or authorization.
 
 ## Feature list
 
@@ -125,7 +125,7 @@ Confirmed starting scope: a small fake shop built in this repository, with both 
 
 ## Event contract and semantics
 
-Proposed versioned payload; this is not the current API contract:
+Versioned payload established in milestone 1 and extended with durable identity/batch semantics in milestone 2. See [API_V1.md](API_V1.md) for exact currently implemented behavior; later analytical and operational guarantees remain future work:
 
 ```json
 {
@@ -161,6 +161,8 @@ Proposed versioned payload; this is not the current API contract:
 
 ### Milestone 1 — Establish contracts and project access
 
+**Status:** implemented and verified locally. [Task ledger, decisions, demo and evidence](MILESTONE_1.md). CI workflow added; hosted CI awaits a push.
+
 **Outcome:** a well-defined API that separates data by project and rejects invalid requests consistently.
 
 - Document the v1 payload, error format, event identity, date semantics, and acceptance guarantee; implement single-event validation and project-scoped API access.
@@ -174,6 +176,8 @@ Proposed versioned payload; this is not the current API contract:
 **Demo:** send valid and invalid events for two projects and show isolated results.
 
 ### Milestone 2 — Deliver durable ingestion and PostgreSQL analytics
+
+**Status:** implemented and verified locally, September 15, 2026. [Task ledger, setup and recovery evidence](MILESTONE_2.md). Both PostgreSQL profiles and container images are tested. The user requested preparation of the [hosting spike](HOSTING_SPIKE.md); actual Vercel/Neon deployment checks remain pending hosting configuration.
 
 **Depends on:** milestone 1.
 
@@ -307,4 +311,4 @@ For each milestone: implement the vertical slice, update API/setup documentation
 | Retention period and data sensitivity? | Synthetic data; provisional 30-day raw retention | Changes storage cost, event acceptance window, and deletion work |
 | Which report matters most: usage, funnels, retention, or revenue? | Usage first, then funnels and retention | Determines the ordering inside milestones 4 and 6 |
 
-The free-hosting preference and first integration are recorded; exact provider viability still requires the deployment spike. Continue with milestone 1 access controls and contracts, then durable persistence. Keep milestone scheduling deliverable-based.
+The free-hosting preference and first integration are recorded; exact provider viability still requires the prepared deployment spike. Milestones 1–2 are implemented locally; milestone 3 reliable distributed processing is the next development slice. Keep milestone scheduling deliverable-based.

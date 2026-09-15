@@ -7,10 +7,10 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace EventTracking.Api.Tests;
 
-public sealed class DemoShopTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class DemoShopTests : IClassFixture<PrototypeFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
-    public DemoShopTests(WebApplicationFactory<Program> factory) => _factory = factory;
+    private readonly PrototypeFactory _factory;
+    public DemoShopTests(PrototypeFactory factory) => _factory = factory;
 
     [Fact]
     public async Task BrowserAndServerEvents_ShareSessionAndHaveDistinctSources()

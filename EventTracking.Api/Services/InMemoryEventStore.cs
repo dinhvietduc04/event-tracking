@@ -5,7 +5,7 @@ namespace EventTracking.Api.Services;
 public interface IEventStore
 {
     void Add(TrackedEvent trackedEvent);
-    IReadOnlyCollection<EventSummary> GetSummary(DateTimeOffset? from, DateTimeOffset? to, string? userId);
+    IReadOnlyCollection<EventSummary> GetSummary(string projectId, DateTimeOffset? from, DateTimeOffset? to, string? userId);
     IReadOnlyCollection<TrackedEvent> GetRecent(string sessionId);
 }
 
@@ -26,18 +26,19 @@ public sealed class InMemoryEventStore : IEventStore
     {
         lock (_lock)
         {
-            return _events.Where(item => item.SessionId == sessionId)
+            return _events.Where(item => item.ProjectId == "demo-shop" && item.SessionId == sessionId)
                 .TakeLast(50).Reverse().ToArray();
         }
     }
 
-    public IReadOnlyCollection<EventSummary> GetSummary(DateTimeOffset? from, DateTimeOffset? to, string? userId)
+    public IReadOnlyCollection<EventSummary> GetSummary(string projectId, DateTimeOffset? from, DateTimeOffset? to, string? userId)
     {
         lock (_lock)
         {
             return _events
+                .Where(@event => @event.ProjectId == projectId)
                 .Where(@event => from is null || @event.OccurredAt >= from)
-                .Where(@event => to is null || @event.OccurredAt <= to)
+                .Where(@event => to is null || @event.OccurredAt < to)
                 .Where(@event => string.IsNullOrWhiteSpace(userId) || @event.UserId == userId)
                 .GroupBy(@event => @event.EventType)
                 .Select(group => new EventSummary(group.Key, group.Count()))

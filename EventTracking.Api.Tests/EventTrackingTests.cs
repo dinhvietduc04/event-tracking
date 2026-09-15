@@ -5,11 +5,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace EventTracking.Api.Tests;
 
-public sealed class EventTrackingTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class EventTrackingTests : IClassFixture<PrototypeFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly PrototypeFactory _factory;
 
-    public EventTrackingTests(WebApplicationFactory<Program> factory)
+    public EventTrackingTests(PrototypeFactory factory)
     {
         _factory = factory;
     }
@@ -17,7 +17,8 @@ public sealed class EventTrackingTests : IClassFixture<WebApplicationFactory<Pro
     [Fact]
     public async Task TrackEvent_ThenGetSummary_ReturnsAggregatedCounts()
     {
-        using HttpClient client = _factory.WithWebHostBuilder(_ => { }).CreateClient();
+        using var app = _factory.WithWebHostBuilder(TestProjects.Configure);
+        using HttpClient client = app.CreateClient().WithKey(TestProjects.BothA);
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
         await client.PostAsJsonAsync("/events", new TrackEventRequest("page_view", "user-1", now));
@@ -37,7 +38,8 @@ public sealed class EventTrackingTests : IClassFixture<WebApplicationFactory<Pro
     [Fact]
     public async Task GetUserSummary_FiltersByUser()
     {
-        using HttpClient client = _factory.WithWebHostBuilder(_ => { }).CreateClient();
+        using var app = _factory.WithWebHostBuilder(TestProjects.Configure);
+        using HttpClient client = app.CreateClient().WithKey(TestProjects.BothA);
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
         await client.PostAsJsonAsync("/events", new TrackEventRequest("purchase", "user-a", now));
@@ -55,7 +57,8 @@ public sealed class EventTrackingTests : IClassFixture<WebApplicationFactory<Pro
     [Fact]
     public async Task TrackEvent_WithMissingType_ReturnsValidationError()
     {
-        using HttpClient client = _factory.WithWebHostBuilder(_ => { }).CreateClient();
+        using var app = _factory.WithWebHostBuilder(TestProjects.Configure);
+        using HttpClient client = app.CreateClient().WithKey(TestProjects.BothA);
 
         HttpResponseMessage response = await client.PostAsJsonAsync("/events", new TrackEventRequest("", "user", DateTimeOffset.UtcNow));
 
