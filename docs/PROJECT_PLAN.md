@@ -1,6 +1,10 @@
 # Analytics and Event Tracking Platform: project plan
 
+<<<<<<< Updated upstream
 Status: proposed roadmap, September 13, 2026; goal, pace, and stack direction confirmed. Milestones describe future work unless explicitly marked as existing.
+=======
+Status, September 17, 2026: milestones 1–2 and milestone 4's local MVP feature scope are implemented. At the user's request, milestone 4 was prioritized after M3-01 worker extraction; RabbitMQ, retries/dead letters and outbox monitoring in milestone 3 remain unfinished. The hosting spike records successful Hosted health checks; this dashboard change has not been deployed publicly. See [milestone 3 remaining tasks](MILESTONE_3.md), [milestone 4 setup and evidence](MILESTONE_4.md), [hosting spike results](HOSTING_SPIKE.md), and the [current API contract](API_V1.md).
+>>>>>>> Stashed changes
 
 Build a platform where developers send application events and product teams explore usage, conversion, and retention. Each milestone should produce a runnable demo and evidence that its behavior is correct.
 
@@ -47,7 +51,7 @@ Current limitations: process restarts lose queued and stored events; general ing
 
 ## Architecture and evolution
 
-Start with one API application divided into ingestion, analytics, and project-access modules. Extract the worker when RabbitMQ arrives. Separate ingestion and analytics deployments only if load or operational needs justify it.
+Start with one API application divided into ingestion, analytics, and project-access modules. The first milestone 3 slice extracts the database worker and shared persistence library before introducing RabbitMQ. Separate ingestion and analytics deployments only if load or operational needs justify it.
 
 The distributed profile in milestone 2 makes PostgreSQL the durable acceptance boundary: the API commits a validated event to an inbox before returning `202`. A database worker projects inbox records into queryable events. Milestone 3 uses those same committed records as an outbox for publishing to RabbitMQ, so there is no database-and-broker dual write in the HTTP request. The free hosted profile below instead commits queryable events during the request, so it does not depend on a continuously running worker.
 
@@ -74,7 +78,7 @@ Proposed technology choices:
 | API and worker | ASP.NET Core, EF Core with PostgreSQL provider | Extend the current code and keep transactional persistence straightforward |
 | Queue | RabbitMQ in milestone 3 | Learn explicit publishing confirmation, consumer acknowledgement, retry, and recovery behavior |
 | Analytical database | PostgreSQL first; ClickHouse in milestone 7 | Compare correctness, query latency, and operational cost on the same dataset |
-| Dashboard | React with TypeScript, provisional | Choose Blazor instead if keeping the project entirely in C# matters more |
+| Dashboard | React with TypeScript and Vite | Implemented in milestone 4, served by the API with cookie sessions |
 | Local environment | Docker Compose | Repeatable API, worker, database, and broker setup |
 | Observability | Structured logs, OpenTelemetry; Prometheus/Grafana when needed | Trace acceptance through processing and measure backlog and latency |
 | Deployment | Vercel dashboard and candidate API container; Neon PostgreSQL | Validate the container beta in an early spike; Render is a fallback for a public hobby demo |
@@ -83,7 +87,7 @@ RabbitMQ confirms and consumer acknowledgements cover different stages; a lost c
 
 ## Free deployment strategy
 
-Provider information checked September 13, 2026. This is a hosting proposal, not a verified deployment of this repository.
+Provider information checked September 13, 2026. Vercel/Neon Hosted health checks are now recorded in the hosting spike; the remaining provider limits and release criteria are still a proposal awaiting verification.
 
 | Component | Proposed free host | Relevant constraint |
 | --- | --- | --- |
@@ -93,7 +97,7 @@ Provider information checked September 13, 2026. This is a hosting proposal, not
 | RabbitMQ and separate worker | Local Docker Compose initially | Retain distributed learning and recovery tests without requiring an always-on hosted broker/consumer |
 | ClickHouse | Local milestone 7 evaluation initially | Hosted adoption needs a separate capacity and budget decision |
 
-Vercel's container documentation supports evaluating the API there, but does not establish that this application has been tested. Containers scale down after idle periods, so a background worker cannot be the sole mechanism that completes accepted events. Sources: [Vercel Container Images](https://vercel.com/docs/functions/container-images), [Vercel Hobby](https://vercel.com/docs/plans/hobby), and [Neon Free plan](https://neon.com/blog/how-to-make-the-most-of-neons-free-plan).
+Vercel's container documentation supports evaluating the API there; the hosting spike separately records successful application health checks. Containers scale down after idle periods, so a background worker cannot be the sole mechanism that completes accepted events. Sources: [Vercel Container Images](https://vercel.com/docs/functions/container-images), [Vercel Hobby](https://vercel.com/docs/plans/hobby), and [Neon Free plan](https://neon.com/blog/how-to-make-the-most-of-neons-free-plan).
 
 If the Vercel spike fails, evaluate Render's Docker web service for the personal demo. Render Free sleeps after 15 minutes without incoming traffic and may take about a minute to wake. Its free PostgreSQL expires after 30 days, so use Neon for persistent data. Render explicitly recommends its free instances for hobby/testing use rather than production applications; it is not the fallback for a customer-facing availability commitment. Sources: [Render Docker](https://render.com/docs/docker) and [Render Free](https://render.com/docs/free).
 
@@ -175,6 +179,11 @@ Proposed versioned payload; this is not the current API contract:
 
 ### Milestone 2 — Deliver durable ingestion and PostgreSQL analytics
 
+<<<<<<< Updated upstream
+=======
+**Status:** implemented and verified locally, September 15, 2026. [Task ledger, setup and recovery evidence](MILESTONE_2.md). Both PostgreSQL profiles and container images are tested. The [hosting spike](HOSTING_SPIKE.md) subsequently recorded deployed Vercel/Neon health checks on September 16; hosted TLS, cold-start and quota verification remain pending.
+
+>>>>>>> Stashed changes
 **Depends on:** milestone 1.
 
 - Add PostgreSQL, migrations, persisted projects/hashed credentials, durable inbox records, and an events table with JSON properties and initial query indexes.
@@ -190,6 +199,8 @@ Proposed versioned payload; this is not the current API contract:
 **Demo:** submit events, interrupt processing, restart, and show the complete deduplicated result.
 
 ### Milestone 3 — Introduce reliable distributed processing
+
+**Status:** in progress. M3-01 extracts the PostgreSQL worker into an independent executable and shares persistence with the API. Process crash, restart and competing-worker behavior are tested; RabbitMQ and its recovery guarantees remain pending. See the [task ledger, setup and evidence](MILESTONE_3.md).
 
 **Depends on:** milestone 2.
 
@@ -208,7 +219,9 @@ Proposed versioned payload; this is not the current API contract:
 
 ### Milestone 4 — Ship the usable MVP
 
-**Depends on:** milestone 3; UI scaffolding can begin after milestone 2 freezes query contracts.
+**Status:** local MVP features implemented and verified. [Task ledger, setup, contracts and evidence](MILESTONE_4.md). Dashboard login/memberships, analytics, explorer/timeline, tracking client, demo and browser smoke are implemented. No production-readiness or RabbitMQ completion claim is made.
+
+**Dependency adjustment:** the user requested milestone 4 after M3-01. Implemented against the stable milestone 2 query semantics and both current PostgreSQL profiles; finish M3-02–04 before claiming the planned reliable distributed MVP. Milestone 5 remains the public production-release gate.
 
 - Add dashboard login and project authorization, event totals, time-series charts, active users, event/property filters, event explorer, and user timeline.
 - Show the last query refresh time and measured processing lag. Include loading, empty, permission, and failure states.
@@ -300,11 +313,15 @@ For each milestone: implement the vertical slice, update API/setup documentation
 | Development pace | Confirmed: solo, part-time, deliverable-based milestones | No calendar deadlines assumed; split milestones into small vertical slices |
 | First app and event sources | Confirmed: fake demo shop, both browser and server sources, no real payment | Local demo implemented; production collector and credential work remain in the roadmap |
 | Technology sequence | Confirmed: ASP.NET Core and PostgreSQL first, queue and ClickHouse incrementally | Follow the staged architecture; benchmark ClickHouse in milestone 7 |
-| Frontend preference? | React/TypeScript; Blazor is an alternative | Changes UI and SDK work |
+| Frontend | Implemented: React/TypeScript, Vite, same-origin API hosting | Cookie sessions and project membership authorize dashboard reads |
 | Expected daily events, peak rate, and query window? | Benchmark targets above; no business volume assumed | Determines storage, batching, and capacity choices |
 | Hosting provider, monthly budget, and local hardware? | Confirmed preference: free if possible; evaluate Vercel plus Neon | Run the API deployment spike in milestone 2; host the simple profile first and keep distributed services local initially |
 | Multiple organizations or just multiple app projects? | Projects first; organization roles later | Changes membership and administration scope |
 | Retention period and data sensitivity? | Synthetic data; provisional 30-day raw retention | Changes storage cost, event acceptance window, and deletion work |
 | Which report matters most: usage, funnels, retention, or revenue? | Usage first, then funnels and retention | Determines the ordering inside milestones 4 and 6 |
 
+<<<<<<< Updated upstream
 The free-hosting preference and first integration are recorded; exact provider viability still requires the deployment spike. Continue with milestone 1 access controls and contracts, then durable persistence. Keep milestone scheduling deliverable-based.
+=======
+The free-hosting preference and first integration are recorded; provider viability still requires the remaining hosting-spike checks. Milestones 1–2, M3-01 and the requested milestone 4 feature scope are implemented locally. M3-02, the confirmed RabbitMQ outbox and idempotent consumer, remains the next reliability dependency. Complete M3-02–04 and milestone 5 before a production release.
+>>>>>>> Stashed changes

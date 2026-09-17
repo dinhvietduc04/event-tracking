@@ -1,4 +1,6 @@
 <Solution>
   <Project Path="EventTracking.Api.Tests/EventTracking.Api.Tests.csproj" />
   <Project Path="EventTracking.Api/EventTracking.Api.csproj" />
+  <Project Path="EventTracking.Persistence/EventTracking.Persistence.csproj" />
+  <Project Path="EventTracking.Worker/EventTracking.Worker.csproj" />
 </Solution>

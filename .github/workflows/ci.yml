@@ -1,0 +1,57 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: event_tracking
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: event_tracking
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U event_tracking -d event_tracking"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      TEST_POSTGRES_CONNECTION: Host=localhost;Port=5432;Database=event_tracking;Username=event_tracking;Password=ci-only-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: EventTracking.Dashboard/package-lock.json
+      - run: npm ci
+        working-directory: EventTracking.Dashboard
+      - run: npm run build && npm test
+        working-directory: EventTracking.Dashboard
+      - run: dotnet restore EventTracking.slnx
+      - run: dotnet build EventTracking.slnx --configuration Release --no-restore
+      - run: dotnet test EventTracking.slnx --configuration Release --no-build --logger trx --results-directory TestResults
+      - name: Prepare browser smoke database
+        run: psql -h localhost -U event_tracking -d event_tracking -c 'CREATE DATABASE dashboard_smoke_ci;'
+        env:
+          PGPASSWORD: ci-only-password
+      - run: npx playwright install --with-deps chromium
+        working-directory: EventTracking.Dashboard
+      - run: npm run test:e2e
+        working-directory: EventTracking.Dashboard
+        env:
+          DASHBOARD_TEST_CONNECTION: Host=localhost;Port=5432;Database=dashboard_smoke_ci;Username=event_tracking;Password=ci-only-password
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            TestResults/*.trx
+            EventTracking.Dashboard/test-results/

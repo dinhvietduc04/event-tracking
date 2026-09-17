@@ -21,6 +21,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EventTracking.Api\EventTracking.Api.csproj" />
+    <ProjectReference Include="..\EventTracking.Worker\EventTracking.Worker.csproj" />
   </ItemGroup>
+
+  <!-- Execute the worker's own deployment output, not the test host's shared-framework dependency set. -->
+  <Target Name="PublishWorkerForProcessTests" AfterTargets="Build">
+    <MSBuild Projects="../EventTracking.Worker/EventTracking.Worker.csproj" Targets="Publish"
+             Properties="Configuration=$(Configuration);NoBuild=true;PublishDir=$(TargetDir)worker-process/" />
+  </Target>
 
 </Project>

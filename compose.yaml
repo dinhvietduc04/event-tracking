@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: event_tracking
+      POSTGRES_DB: event_tracking
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/New-LocalEnvironment.ps1 first}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-15433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U event_tracking -d event_tracking"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  api:
+    build: .
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Tracking: "${ConnectionStrings__Tracking:-Host=postgres;Database=event_tracking;Username=event_tracking;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable}"
+      Storage__Profile: ${STORAGE_PROFILE:-Distributed}
+      Storage__MigrateOnStartup: ${STORAGE_MIGRATE_ON_STARTUP:-true}
+      Dashboard__Enabled: "true"
+      Dashboard__Bootstrap__Username: ${DASHBOARD_USERNAME:-demo}
+      Dashboard__Bootstrap__Password: ${DASHBOARD_PASSWORD:-}
+      Dashboard__Bootstrap__Projects: a,b
+      ProjectAccess__Keys__0__ProjectId: a
+      ProjectAccess__Keys__0__KeyHash: ${PROJECT_A_INGEST_HASH}
+      ProjectAccess__Keys__0__Permissions__0: ingest
+      ProjectAccess__Keys__1__ProjectId: a
+      ProjectAccess__Keys__1__KeyHash: ${PROJECT_A_READ_HASH}
+      ProjectAccess__Keys__1__Permissions__0: read
+      ProjectAccess__Keys__2__ProjectId: b
+      ProjectAccess__Keys__2__KeyHash: ${PROJECT_B_INGEST_HASH}
+      ProjectAccess__Keys__2__Permissions__0: ingest
+      ProjectAccess__Keys__3__ProjectId: b
+      ProjectAccess__Keys__3__KeyHash: ${PROJECT_B_READ_HASH}
+      ProjectAccess__Keys__3__Permissions__0: read
+    ports:
+      - "127.0.0.1:${API_PORT:-5191}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      ConnectionStrings__Tracking: "${ConnectionStrings__Tracking:-Host=postgres;Database=event_tracking;Username=event_tracking;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable}"
+      Storage__Profile: ${STORAGE_PROFILE:-Distributed}
+    restart: on-failure:5
+    stop_grace_period: 35s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+volumes:
+  postgres-data:

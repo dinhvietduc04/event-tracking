@@ -1,0 +1,14 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY EventTracking.Worker/EventTracking.Worker.csproj EventTracking.Worker/
+COPY EventTracking.Persistence/EventTracking.Persistence.csproj EventTracking.Persistence/
+RUN dotnet restore EventTracking.Worker/EventTracking.Worker.csproj
+COPY EventTracking.Worker/ EventTracking.Worker/
+COPY EventTracking.Persistence/ EventTracking.Persistence/
+RUN dotnet publish EventTracking.Worker/EventTracking.Worker.csproj --configuration Release --no-restore -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0
+WORKDIR /app
+COPY --from=build /app/publish .
+USER $APP_UID
+ENTRYPOINT ["dotnet", "EventTracking.Worker.dll"]

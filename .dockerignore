@@ -1,0 +1,13 @@
+**/bin
+**/obj
+.git
+.env
+.env.*
+**/*.local.json
+TestResults
+EventTracking.Api.Tests
+docs
+**/node_modules
+EventTracking.Api/wwwroot/dashboard
+EventTracking.Dashboard/test-results
+EventTracking.Dashboard/playwright-report
