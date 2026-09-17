@@ -1,6 +1,52 @@
-@EventTracking.Api_HostAddress = http://localhost:5191
+@baseUrl = http://localhost:5191
+@ingestKey = replace-with-generated-project-ingest-key
+@readKey = replace-with-generated-project-read-key
 
-GET {{EventTracking.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+GET {{baseUrl}}/health/live
+
+### Generate keys with scripts/Start-Development.ps1; keep substituted secrets uncommitted.
+POST {{baseUrl}}/v1/events
+Authorization: Bearer {{ingestKey}}
+Content-Type: application/json
+
+{
+  "eventId": "{{$guid}}",
+  "eventType": "page_view",
+  "schemaVersion": 1,
+  "occurredAt": "{{$datetime iso8601}}",
+  "userId": "synthetic-user",
+  "properties": { "fixture": "http-example" }
+}
 
 ###
+GET {{baseUrl}}/v1/analytics/events
+Authorization: Bearer {{readKey}}
+
+###
+GET {{baseUrl}}/v1/analytics/users/synthetic-user
+Authorization: Bearer {{readKey}}
+
+### Durable batch; reuse the same literal IDs/payload on retries.
+POST {{baseUrl}}/v1/events/batch
+Authorization: Bearer {{ingestKey}}
+Content-Type: application/json
+
+{
+  "events": [
+    {
+      "eventId": "{{$guid}}",
+      "eventType": "login",
+      "schemaVersion": 1,
+      "occurredAt": "{{$datetime iso8601}}",
+      "userId": "synthetic-user"
+    }
+  ]
+}
+
+###
+GET {{baseUrl}}/v1/analytics/active-users
+Authorization: Bearer {{readKey}}
+
+###
+GET {{baseUrl}}/v1/analytics/users/synthetic-user/timeline?limit=10
+Authorization: Bearer {{readKey}}

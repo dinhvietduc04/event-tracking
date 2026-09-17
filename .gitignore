@@ -1,8 +1,6 @@
 **/bin/
 **/obj/
 .vs/
-<<<<<<< Updated upstream
-=======
 .env
 .env.*
 *.local.json
@@ -12,4 +10,3 @@ TestResults/
 EventTracking.Api/wwwroot/dashboard/
 EventTracking.Dashboard/test-results/
 EventTracking.Dashboard/playwright-report/
->>>>>>> Stashed changes

@@ -1,12 +1,3 @@
-<<<<<<< Updated upstream
-using EventTracking.Api.Models;
-using EventTracking.Api.Services;
-using EventTracking.Api.Demo;
-
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddOpenApi();
-=======
 using EventTracking.Persistence;
 using System.Threading.RateLimiting;
 using EventTracking.Api;
@@ -74,19 +65,11 @@ if (storage.Durable)
 }
 else builder.Services.AddSingleton<IProjectKeys, ProjectKeys>();
 builder.Services.AddSingleton<EventValidation>();
->>>>>>> Stashed changes
 builder.Services.AddSingleton<IEventQueue, EventQueue>();
 builder.Services.AddSingleton<IEventStore, InMemoryEventStore>();
-builder.Services.AddHostedService<EventIngestionWorker>();
+if (!storage.Durable || builder.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("DemoShop:Enabled"))
+    builder.Services.AddHostedService<EventIngestionWorker>(); // The local shop retains its independent prototype store.
 builder.Services.AddSingleton<DemoShop>();
-<<<<<<< Updated upstream
-
-var app = builder.Build();
-
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-=======
 int permits = builder.Configuration.GetValue("Ingestion:RequestsPerMinute", 600);
 if (permits < 1) throw new InvalidOperationException("Ingestion:RequestsPerMinute must be positive.");
 builder.Services.AddRateLimiter(options =>
@@ -152,13 +135,12 @@ if (storage.Durable)
         return;
     }
     if (args.Contains("--migrate") || args.Contains("--provision")) return;
->>>>>>> Stashed changes
 }
 
-app.UseHttpsRedirection();
-<<<<<<< Updated upstream
+else app.Logger.LogWarning("Explicit Volatile profile: accepted events are lost on restart and retries double-count.");
 
-=======
+app.UseExceptionHandler();
+app.UseHttpsRedirection();
 app.UseRouting();
 app.Use(RequestBoundary.Invoke);
 app.UseAuthentication();
@@ -175,7 +157,6 @@ if (dashboard)
     app.MapGet("/dashboard", () => Results.Redirect("/dashboard/index.html"));
     app.MapDashboard();
 }
->>>>>>> Stashed changes
 if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("DemoShop:Enabled"))
 {
     app.UseStaticFiles();
@@ -184,65 +165,18 @@ if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("DemoSho
     app.MapDemoShop();
 }
 
-app.MapPost("/events", async (TrackEventRequest request, IEventQueue eventQueue, CancellationToken cancellationToken) =>
+app.MapGet("/health/live", () => Results.Ok(new { status = "alive", profile = storage.Profile, durability = storage.Durable ? "durable" : "volatile" }));
+app.MapGet("/health/ready", async (IServiceProvider services, CancellationToken ct) =>
 {
-    if (string.IsNullOrWhiteSpace(request.EventType))
+    if (storage.Durable)
     {
-        return Results.ValidationProblem(new Dictionary<string, string[]>
-        {
-            [nameof(request.EventType)] = ["EventType is required."]
-        });
+        await using var connection = await services.GetRequiredService<NpgsqlDataSource>().OpenConnectionAsync(ct);
+        await using var command = DatabaseSql.Command(connection, null, "SELECT profile FROM storage_state WHERE id=1");
+        if ((string?)await command.ExecuteScalarAsync(ct) != storage.Profile) return Results.Problem(statusCode: 503, title: "Storage profile has changed; restart with matching configuration.");
     }
-
-    TrackedEvent trackedEvent = new(
-        Id: Guid.NewGuid(),
-        EventType: request.EventType.Trim(),
-        UserId: request.UserId,
-        OccurredAt: request.OccurredAt ?? DateTimeOffset.UtcNow,
-        IngestedAt: DateTimeOffset.UtcNow);
-
-    await eventQueue.QueueAsync(trackedEvent, cancellationToken);
-
-    return Results.Accepted($"/events/{trackedEvent.Id}", new { trackedEvent.Id });
-})
-.WithName("TrackEvent");
-
-app.MapGet("/analytics/events", (DateTimeOffset? from, DateTimeOffset? to, IEventStore eventStore) =>
-{
-    if (from is not null && to is not null && from > to)
-    {
-        return Results.ValidationProblem(new Dictionary<string, string[]>
-        {
-            ["from"] = ["from must be earlier than or equal to to."]
-        });
-    }
-
-    return Results.Ok(eventStore.GetSummary(from, to, userId: null));
-})
-.WithName("GetEventSummary");
-
-app.MapGet("/analytics/users/{userId}", (string userId, DateTimeOffset? from, DateTimeOffset? to, IEventStore eventStore) =>
-{
-    if (string.IsNullOrWhiteSpace(userId))
-    {
-        return Results.ValidationProblem(new Dictionary<string, string[]>
-        {
-            ["userId"] = ["userId is required."]
-        });
-    }
-
-    if (from is not null && to is not null && from > to)
-    {
-        return Results.ValidationProblem(new Dictionary<string, string[]>
-        {
-            ["from"] = ["from must be earlier than or equal to to."]
-        });
-    }
-
-    return Results.Ok(eventStore.GetSummary(from, to, userId));
-})
-.WithName("GetUserEventSummary");
-
+    return Results.Ok(new { status = "ready", profile = storage.Profile });
+});
+app.MapTrackingApi();
 app.Run();
 
 public partial class Program;

@@ -1,10 +1,6 @@
 # Analytics and Event Tracking Platform: project plan
 
-<<<<<<< Updated upstream
-Status: proposed roadmap, September 13, 2026; goal, pace, and stack direction confirmed. Milestones describe future work unless explicitly marked as existing.
-=======
 Status, September 17, 2026: milestones 1–2 and milestone 4's local MVP feature scope are implemented. At the user's request, milestone 4 was prioritized after M3-01 worker extraction; RabbitMQ, retries/dead letters and outbox monitoring in milestone 3 remain unfinished. The hosting spike records successful Hosted health checks; this dashboard change has not been deployed publicly. See [milestone 3 remaining tasks](MILESTONE_3.md), [milestone 4 setup and evidence](MILESTONE_4.md), [hosting spike results](HOSTING_SPIKE.md), and the [current API contract](API_V1.md).
->>>>>>> Stashed changes
 
 Build a platform where developers send application events and product teams explore usage, conversion, and retention. Each milestone should produce a runnable demo and evidence that its behavior is correct.
 
@@ -179,11 +175,8 @@ Proposed versioned payload; this is not the current API contract:
 
 ### Milestone 2 — Deliver durable ingestion and PostgreSQL analytics
 
-<<<<<<< Updated upstream
-=======
 **Status:** implemented and verified locally, September 15, 2026. [Task ledger, setup and recovery evidence](MILESTONE_2.md). Both PostgreSQL profiles and container images are tested. The [hosting spike](HOSTING_SPIKE.md) subsequently recorded deployed Vercel/Neon health checks on September 16; hosted TLS, cold-start and quota verification remain pending.
 
->>>>>>> Stashed changes
 **Depends on:** milestone 1.
 
 - Add PostgreSQL, migrations, persisted projects/hashed credentials, durable inbox records, and an events table with JSON properties and initial query indexes.
@@ -320,8 +313,4 @@ For each milestone: implement the vertical slice, update API/setup documentation
 | Retention period and data sensitivity? | Synthetic data; provisional 30-day raw retention | Changes storage cost, event acceptance window, and deletion work |
 | Which report matters most: usage, funnels, retention, or revenue? | Usage first, then funnels and retention | Determines the ordering inside milestones 4 and 6 |
 
-<<<<<<< Updated upstream
-The free-hosting preference and first integration are recorded; exact provider viability still requires the deployment spike. Continue with milestone 1 access controls and contracts, then durable persistence. Keep milestone scheduling deliverable-based.
-=======
 The free-hosting preference and first integration are recorded; provider viability still requires the remaining hosting-spike checks. Milestones 1–2, M3-01 and the requested milestone 4 feature scope are implemented locally. M3-02, the confirmed RabbitMQ outbox and idempotent consumer, remains the next reliability dependency. Complete M3-02–04 and milestone 5 before a production release.
->>>>>>> Stashed changes
