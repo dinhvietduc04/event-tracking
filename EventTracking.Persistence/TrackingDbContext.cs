@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 
 namespace EventTracking.Persistence;
 
@@ -73,8 +74,9 @@ public sealed class ProjectMembership
     public bool CanDemo { get; set; }
 }
 
-public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> options) : DbContext(options)
+public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> options) : DbContext(options), IDataProtectionKeyContext
 {
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
     public DbSet<ProjectRecord> Projects => Set<ProjectRecord>();
     public DbSet<CredentialRecord> Credentials => Set<CredentialRecord>();
     public DbSet<EventIdentity> Identities => Set<EventIdentity>();
@@ -84,6 +86,7 @@ public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> option
 
     protected override void OnModelCreating(ModelBuilder model)
     {
+        model.Entity<DataProtectionKey>().ToTable("data_protection_keys");
         model.Entity<ProjectRecord>(e => { e.ToTable("projects"); e.HasKey(x => x.Id); e.Property(x => x.Id).HasMaxLength(100); e.Property(x => x.Name).HasMaxLength(100).HasDefaultValue(""); });
         model.Entity<DashboardUserRecord>(e =>
         {

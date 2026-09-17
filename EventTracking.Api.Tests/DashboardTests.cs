@@ -6,6 +6,9 @@ using EventTracking.Api.Persistence;
 using EventTracking.Persistence;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Options;
 
 namespace EventTracking.Api.Tests;
 
@@ -30,6 +33,93 @@ public sealed class DashboardTests
     private static string Window => $"from={Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(1).ToString("O"))}";
     private static V1EventRequest Event(string type = "page_view") => new(Guid.NewGuid(), type, 1, DateTimeOffset.UtcNow.AddMinutes(-1), "demo-user-001",
         SessionId: "session-demo", Properties: JsonSerializer.SerializeToElement(new { source = "browser", demo = true }));
+
+    [PostgresFact]
+    public async Task SharedKeys_ValidateLoginSessionsAndCsrfAcrossInstancesAndRestart()
+    {
+        foreach (string profile in new[] { "Hosted", "Distributed" })
+        {
+            await using var db = await PostgresTestDatabase.Create();
+            using (var seed = db.App(profile, settings: Settings))
+            using (var client = Client(seed))
+                (await client.GetAsync("/health/ready")).EnsureSuccessStatusCode();
+
+            var settings = new Dictionary<string, string?>
+            {
+                ["Dashboard:Enabled"] = "true", ["ReverseProxy:TrustForwardedProto"] = "true"
+            };
+            using var appA = db.App(profile, seed: false, settings: settings);
+            // Distinct deployment paths must not change the application's protection purposes.
+            using var appB = db.App(profile, seed: false, settings: settings)
+                .WithWebHostBuilder(builder => builder.UseContentRoot(AppContext.BaseDirectory));
+            using var a = ProxyClient(appA);
+            using var b = ProxyClient(appB);
+            Assert.Equal("EventTracking", appA.Services.GetRequiredService<IOptions<DataProtectionOptions>>().Value.ApplicationDiscriminator);
+            Assert.NotEqual(appA.Services.GetRequiredService<IWebHostEnvironment>().ContentRootPath,
+                appB.Services.GetRequiredService<IWebHostEnvironment>().ContentRootPath);
+
+            using var tokenResponse = await a.GetAsync("/dashboard-api/auth/token");
+            tokenResponse.EnsureSuccessStatusCode();
+            string csrfCookie = Cookie(tokenResponse);
+            string anonymousToken = (await tokenResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+            // Initialize the other instance's key cache before receiving the login.
+            (await b.GetAsync("/dashboard-api/auth/token")).EnsureSuccessStatusCode();
+            using var login = await Send(b, HttpMethod.Post, "/auth/login", csrfCookie, anonymousToken,
+                new { username = "analyst", password = Password });
+            Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+            string sessionCookie = Cookie(login);
+            string cookies = $"{csrfCookie}; {sessionCookie}";
+            for (int i = 0; i < 12; i++)
+            {
+                using var session = await Send(i % 2 == 0 ? a : b, HttpMethod.Get, "/session", cookies);
+                Assert.Equal(HttpStatusCode.OK, session.StatusCode);
+                var user = await session.Content.ReadFromJsonAsync<JsonElement>();
+                Assert.Equal("analyst", user.GetProperty("username").GetString());
+                Assert.Equal("a", Assert.Single(user.GetProperty("projects").EnumerateArray()).GetProperty("id").GetString());
+            }
+            using var authenticatedTokenResponse = await Send(a, HttpMethod.Get, "/auth/token", cookies);
+            authenticatedTokenResponse.EnsureSuccessStatusCode();
+            string authenticatedToken = (await authenticatedTokenResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+            Assert.Equal(HttpStatusCode.BadRequest, (await Send(b, HttpMethod.Post, "/auth/logout", cookies)).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await Send(b, HttpMethod.Post, "/auth/logout", cookies, authenticatedToken + "invalid")).StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await Send(b, HttpMethod.Post, "/auth/logout", cookies, authenticatedToken)).StatusCode);
+            long persistedKeys = await db.Scalar("SELECT count(*) FROM data_protection_keys");
+            Assert.True(persistedKeys > 0);
+            appA.Dispose();
+            appB.Dispose();
+
+            using var restarted = db.App(profile, seed: false, settings: settings);
+            using var c = ProxyClient(restarted);
+            Assert.Equal(HttpStatusCode.OK, (await Send(c, HttpMethod.Get, "/session", cookies)).StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await Send(c, HttpMethod.Post, "/auth/logout", cookies, authenticatedToken)).StatusCode);
+            Assert.Equal(persistedKeys, await db.Scalar("SELECT count(*) FROM data_protection_keys"));
+        }
+    }
+
+    private static HttpClient ProxyClient(WebApplicationFactory<Program> app)
+    {
+        var client = app.CreateClient(new() { BaseAddress = new Uri("http://localhost"), AllowAutoRedirect = false, HandleCookies = false });
+        client.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
+        return client;
+    }
+
+    private static string Cookie(HttpResponseMessage response)
+    {
+        string cookie = Assert.Single(response.Headers.GetValues("Set-Cookie"));
+        Assert.Contains("secure", cookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
+        return cookie.Split(';')[0];
+    }
+
+    private static async Task<HttpResponseMessage> Send(HttpClient client, HttpMethod method, string path,
+        string cookies, string? token = null, object? body = null)
+    {
+        using var request = new HttpRequestMessage(method, "/dashboard-api" + path);
+        request.Headers.Add("Cookie", cookies);
+        if (token is not null) request.Headers.Add("X-CSRF-Token", token);
+        if (body is not null) request.Content = JsonContent.Create(body);
+        return await client.SendAsync(request);
+    }
 
     [PostgresFact]
     public async Task ProductionLoginBehindHttpsProxy_KeepsSecureCookiesAndAuthenticates()

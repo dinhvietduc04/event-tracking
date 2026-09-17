@@ -48,7 +48,7 @@ public sealed class PostgresTests
             Assert.True((await (await client.PostAsJsonAsync("/v1/events", payload)).Content.ReadFromJsonAsync<EventAcceptance>())!.AlreadyAccepted);
             Assert.Equal(1, await db.Scalar("SELECT count(*) FROM events"));
             Assert.Equal(0, await db.Scalar("SELECT count(*) FROM inbox WHERE processed_at IS NULL"));
-            Assert.Equal(2, await db.Scalar("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal(3, await db.Scalar("SELECT count(*) FROM \"__EFMigrationsHistory\""));
             await worker.StopAsync();
         }
     }

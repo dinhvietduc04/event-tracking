@@ -11,6 +11,7 @@ using Npgsql;
 using EventTracking.Api.Dashboard;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.DataProtection;
 
 string[] operations = ["--migrate", "--provision", "--retain", "--revoke", "--storage-info", "--dashboard-provision"];
 var builder = WebApplication.CreateBuilder(args.Where(arg => !operations.Contains(arg)).ToArray());
@@ -71,6 +72,10 @@ if (storage.Durable)
         ?? throw new InvalidOperationException("Set ConnectionStrings:Tracking for PostgreSQL, or explicitly select Storage:Profile=Volatile for the old local prototype.");
     builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connection));
     builder.Services.AddDbContextFactory<TrackingDbContext>(options => options.UseNpgsql(connection));
+    // Cookies and antiforgery tokens must survive instance changes and container restarts.
+    builder.Services.AddDataProtection()
+        .SetApplicationName("EventTracking")
+        .PersistKeysToDbContext<TrackingDbContext>();
     builder.Services.AddSingleton<IProjectKeys, PostgresKeys>();
     builder.Services.AddSingleton<PostgresStore>();
     builder.Services.AddSingleton<PostgresAnalytics>();

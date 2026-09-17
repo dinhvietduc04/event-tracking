@@ -47,7 +47,7 @@ docker compose -p event-tracking-m2 up --build -d api worker
 
 The initialization script requires the .NET 10 SDK. It connects explicitly to loopback PostgreSQL, applies migrations, provisions `demo` with access to `a,b`, and saves the random login to ignored `dashboard-login.local.json`. It preserves `.env`, restores temporary environment variables and refuses to replace an existing login file or account. If you already have dashboard credentials, skip initialization and reuse them. An explicitly Hosted **local** database can use `-Profile Hosted`; this does not enable a profile transition.
 
-Open `http://localhost:5299/dashboard/` for that stack. Normal shutdown preserves database state. Sessions may require a new login after container replacement because durable/shared Data Protection key storage is not configured yet.
+Open `http://localhost:5299/dashboard/` for that stack. Normal shutdown preserves database state. Hosted and Distributed profiles persist Data Protection keys in PostgreSQL, so sessions and CSRF tokens survive instance changes and container replacement.
 
 Migration `20260916144411_DashboardAccess` adds `dashboard_users`, `project_memberships` and a project display name. The original migration is unchanged. Outside development, apply `--migrate` using the API operator before starting new instances. The independent worker refuses pending migrations.
 
@@ -59,13 +59,15 @@ For explicit operator provisioning, set `Dashboard__Bootstrap__Username`, `Dashb
 
 The browser signs in with a username/password. The encrypted, HttpOnly, SameSite=Strict cookie expires after eight hours without sliding renewal; Production requires a Secure cookie. Account disable and membership changes are checked against PostgreSQL on every authorized request. Removing membership immediately prevents subsequent project reads and demo writes. Dashboard cookies do not authorize `/v1` routes, and API Bearer keys do not establish dashboard sessions.
 
+Migration `20260917143254_SharedDataProtectionKeys` adds `data_protection_keys`. The API uses ASP.NET Core's EF key repository and the fixed application name `EventTracking`; all instances must use the same database and application name. Apply `--migrate` before deploying this version. Existing cookies from instance-local keys require a fresh login; reload the page to obtain a new CSRF token. Later deployments reuse the persisted key ring. Retain old keys for existing cookies and include this table in database backups. Key XML is stored without application-level encryption, so database access and backups must protect it; certificate/key-management wrapping remains release work. Separate environments should use separate databases.
+
 The Vercel image sets `ReverseProxy__TrustForwardedProto=true` because Vercel terminates HTTPS before forwarding HTTP to the container. The API processes one `X-Forwarded-Proto` value before HTTPS redirection, authentication and CSRF handling, keeping production cookies Secure. Forwarded hosts and client IPs are not enabled by this setting. Leave it disabled for directly accessible servers; enable it only behind a trusted proxy that supplies the protocol header and exclusively controls access to the container. Without it, production `/dashboard-api/auth/token` fails when the backend sees HTTP.
 
 Before every POST, the client obtains a request token from `/dashboard-api/auth/token` and sends it as `X-CSRF-Token` together with the cookie. Login and logout also validate CSRF. Login has a 10-request/minute IP limit; ordinary dashboard requests have a 240-request/minute account/IP limit. Demo ingestion uses the existing per-project ingestion limit. All dashboard API responses use `Cache-Control: no-store`.
 
 All tracking goes through the authenticated demo backend. Browser collection accepts only `page_view`, `login` and `checkout_started`, with `properties.source=browser`. Purchase submissions cannot supply prices: the backend checks catalog IDs and quantity 1–10, computes USD minor-unit totals, constructs `source=server`, and commits the purchase event before confirming the mock order. The event is the mock order's durable receipt; no real payment/order-management system is claimed. Stable order/event IDs deduplicate concurrent retries and changed normalized payloads conflict. The same validation, quotas, retention and identity windows as `/v1` apply.
 
-Membership `can_demo=false` allows viewing but rejects demo writes. There is no anonymous public collector or public write key in this milestone. Bootstrap grants demo access for local use; external credential management, password reset, organization roles, audit records and shared session-key operations remain release work.
+Membership `can_demo=false` allows viewing but rejects demo writes. There is no anonymous public collector or public write key in this milestone. Bootstrap grants demo access for local use; external credential management, password reset, organization roles, audit records and key encryption/recovery operations remain release work.
 
 ## Dashboard API and analytical definitions
 

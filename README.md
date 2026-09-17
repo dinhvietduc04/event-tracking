@@ -36,7 +36,7 @@ The homepage opens the analytics dashboard whenever it is enabled; signed-out vi
 
 Both PostgreSQL modes share validation, credentials, event identity and queries. Database failure never switches profiles. Changing an existing database's profile requires an explicit drained transition. Production readiness remains gated by milestone 5. The [Vercel/Neon spike](docs/HOSTING_SPIKE.md) records successful hosted health checks; runtime TLS, cold starts and provider quotas remain pending.
 
-The API no longer processes durable inbox work itself; `Storage__WorkerEnabled` / `WORKER_ENABLED` are obsolete. Start/stop the `worker` service to control projection. For a Hosted Compose setup, start only `postgres api` and stop any existing workers; the worker refuses Hosted databases. Apply migrations using the API operator command before starting a worker outside Compose. Migrations live in `EventTracking.Persistence`; milestone 4 adds the `DashboardAccess` migration for accounts, memberships and project names.
+The API no longer processes durable inbox work itself; `Storage__WorkerEnabled` / `WORKER_ENABLED` are obsolete. Start/stop the `worker` service to control projection. For a Hosted Compose setup, start only `postgres api` and stop any existing workers; the worker refuses Hosted databases. Apply migrations using the API operator command before starting a worker outside Compose. Migrations live in `EventTracking.Persistence`; milestone 4 adds `DashboardAccess` for accounts, memberships and project names, and `SharedDataProtectionKeys` for login/CSRF continuity across instances and restarts.
 
 ## Local shop
 
