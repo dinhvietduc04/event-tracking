@@ -32,6 +32,39 @@ public sealed class DashboardTests
         SessionId: "session-demo", Properties: JsonSerializer.SerializeToElement(new { source = "browser", demo = true }));
 
     [PostgresFact]
+    public async Task ProductionLoginBehindHttpsProxy_KeepsSecureCookiesAndAuthenticates()
+    {
+        await using var db = await PostgresTestDatabase.Create();
+        var settings = Settings;
+        settings["ReverseProxy:TrustForwardedProto"] = "true";
+        using var app = db.App("Hosted", seed: false, settings: settings);
+        using var client = app.CreateClient(new()
+        {
+            BaseAddress = new Uri("http://localhost"), AllowAutoRedirect = false, HandleCookies = false
+        });
+        client.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
+        await app.Services.GetRequiredService<DashboardAccounts>().Provision(
+            app.Services.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>());
+
+        var tokenResponse = await client.GetAsync("/dashboard-api/auth/token");
+        Assert.Equal(HttpStatusCode.OK, tokenResponse.StatusCode);
+        string csrfCookie = Assert.Single(tokenResponse.Headers.GetValues("Set-Cookie"));
+        Assert.Contains("secure", csrfCookie, StringComparison.OrdinalIgnoreCase);
+        var token = await tokenResponse.Content.ReadFromJsonAsync<JsonElement>();
+        using var login = new HttpRequestMessage(HttpMethod.Post, "/dashboard-api/auth/login")
+        { Content = JsonContent.Create(new { username = "analyst", password = Password }) };
+        login.Headers.Add("Cookie", csrfCookie.Split(';')[0]);
+        login.Headers.Add("X-CSRF-Token", token.GetProperty("token").GetString());
+        var response = await client.SendAsync(login);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        string sessionCookie = Assert.Single(response.Headers.GetValues("Set-Cookie"));
+        Assert.Contains("secure", sessionCookie, StringComparison.OrdinalIgnoreCase);
+        using var session = new HttpRequestMessage(HttpMethod.Get, "/dashboard-api/session");
+        session.Headers.Add("Cookie", sessionCookie.Split(';')[0]);
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(session)).StatusCode);
+    }
+
+    [PostgresFact]
     public async Task LoginRequiresCsrf_ProjectsEnforceMembership_AndLogoutRevokesCookie()
     {
         await using var db = await PostgresTestDatabase.Create();

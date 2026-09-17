@@ -18,7 +18,7 @@ RUN dotnet publish EventTracking.Api/EventTracking.Api.csproj --configuration Re
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app/publish .
-ENV PORT=8080 Storage__Profile=Hosted Dashboard__Enabled=true
+ENV PORT=8080 Storage__Profile=Hosted Dashboard__Enabled=true ReverseProxy__TrustForwardedProto=true
 USER $APP_UID
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "EventTracking.Api.dll"]

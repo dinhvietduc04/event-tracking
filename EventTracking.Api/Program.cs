@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using EventTracking.Api.Dashboard;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.HttpOverrides;
 
 string[] operations = ["--migrate", "--provision", "--retain", "--revoke", "--storage-info", "--dashboard-provision"];
 var builder = WebApplication.CreateBuilder(args.Where(arg => !operations.Contains(arg)).ToArray());
@@ -18,6 +19,18 @@ storage.Validate(builder.Configuration);
 builder.Services.AddSingleton(storage);
 bool dashboard = storage.Durable && builder.Configuration.GetValue("Dashboard:Enabled", builder.Environment.IsDevelopment());
 DashboardAccess.Configure(builder.Services, builder.Environment.IsDevelopment());
+if (builder.Configuration.GetValue<bool>("ReverseProxy:TrustForwardedProto"))
+{
+    // Opt in only when the container is reachable exclusively through a trusted TLS proxy.
+    // Vercel supplies the original protocol; do not trust forwarded hosts or client IPs here.
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
+        options.ForwardLimit = 1;
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
 if (builder.Configuration["PORT"] is { Length: > 0 } port)
 {
     if (!int.TryParse(port, out int portNumber) || portNumber is < 1 or > 65535) throw new InvalidOperationException("Invalid PORT.");
@@ -140,6 +153,7 @@ if (storage.Durable)
 else app.Logger.LogWarning("Explicit Volatile profile: accepted events are lost on restart and retries double-count.");
 
 app.UseExceptionHandler();
+if (app.Configuration.GetValue<bool>("ReverseProxy:TrustForwardedProto")) app.UseForwardedHeaders();
 app.UseHttpsRedirection();
 app.UseRouting();
 app.Use(RequestBoundary.Invoke);
