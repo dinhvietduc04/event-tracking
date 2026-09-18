@@ -5,10 +5,15 @@ using Npgsql;
 namespace EventTracking.Worker;
 
 public sealed class PostgresWorker(PostgresStore store, StorageOptions options,
-    IDbContextFactory<TrackingDbContext> factory, NpgsqlDataSource source, ILogger<PostgresWorker> logger) : BackgroundService
+    IDbContextFactory<TrackingDbContext> factory, NpgsqlDataSource source, ILogger<PostgresWorker> logger, IHostEnvironment environment) : BackgroundService
 {
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
+        if (ProductionSecurity.Required(environment.EnvironmentName))
+        {
+            await using var transport = await source.OpenConnectionAsync(cancellationToken);
+            await RuntimeDatabaseAccess.Verify(source, "Worker", cancellationToken);
+        }
         await using var db = await factory.CreateDbContextAsync(cancellationToken);
         if ((await db.Database.GetPendingMigrationsAsync(cancellationToken)).Any())
             throw new InvalidOperationException("Apply database migrations with the API --migrate command before starting the worker.");

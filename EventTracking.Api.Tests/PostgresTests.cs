@@ -36,19 +36,23 @@ public sealed class PostgresTests
         using (var app = db.App(seed: false))
         using (var client = app.CreateClient().WithKey(TestProjects.BothA))
         {
-            using var worker = WorkerApplication.Build([], builder => builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            using var worker = WorkerApplication.Build([], builder =>
+            {
+                builder.Environment.EnvironmentName = "Testing";
+                builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Tracking"] = db.ConnectionString,
                 ["Storage:Profile"] = "Distributed",
                 ["Storage:MigrateOnStartup"] = "false",
                 ["Storage:AllowProfileTransition"] = "false"
-            }));
+                });
+            });
             await worker.StartAsync();
             await Until(async () => (await client.GetFromJsonAsync<EventSummary[]>("/v1/analytics/events"))!.Sum(e => e.Count) == 1);
             Assert.True((await (await client.PostAsJsonAsync("/v1/events", payload)).Content.ReadFromJsonAsync<EventAcceptance>())!.AlreadyAccepted);
             Assert.Equal(1, await db.Scalar("SELECT count(*) FROM events"));
             Assert.Equal(0, await db.Scalar("SELECT count(*) FROM inbox WHERE processed_at IS NULL"));
-            Assert.Equal(3, await db.Scalar("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal(5, await db.Scalar("SELECT count(*) FROM \"__EFMigrationsHistory\""));
             await worker.StopAsync();
         }
     }

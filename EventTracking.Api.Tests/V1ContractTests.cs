@@ -143,12 +143,12 @@ public sealed class V1ContractTests : IClassFixture<PrototypeFactory>
     }
 
     [Fact]
-    public async Task DevelopmentKeysCannotAuthorizeProductionRequests()
+    public async Task DevelopmentKeysCannotAuthorizeNonDevelopmentRequests()
     {
         using var app = _factory.WithWebHostBuilder(builder =>
         {
             TestProjects.Configure(builder);
-            builder.UseEnvironment("Production");
+            builder.UseEnvironment("Testing");
         });
         using var client = app.CreateClient().WithKey(TestProjects.BothA);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/v1/events", Event())).StatusCode);

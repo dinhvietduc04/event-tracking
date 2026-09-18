@@ -7,11 +7,13 @@ $local = Get-Content -Raw (Join-Path $root '.env') | ConvertFrom-StringData
 $path = Join-Path $root 'dashboard-login.local.json'
 if (Test-Path -LiteralPath $path) { throw 'dashboard-login.local.json already exists. Reuse that account instead of replacing it.' }
 $password = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(16))
-$names = @('ConnectionStrings__Tracking','Storage__Profile','Storage__MigrateOnStartup','Storage__AllowProfileTransition','Dashboard__Bootstrap__Username','Dashboard__Bootstrap__Password','Dashboard__Bootstrap__Projects')
+$names = @('ASPNETCORE_ENVIRONMENT','DOTNET_ENVIRONMENT','ConnectionStrings__Operator','Storage__Profile','Storage__MigrateOnStartup','Storage__AllowProfileTransition','Dashboard__Bootstrap__Username','Dashboard__Bootstrap__Password','Dashboard__Bootstrap__Projects')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 try {
-    $env:ConnectionStrings__Tracking = "Host=127.0.0.1;Port=$($local.POSTGRES_PORT);Database=event_tracking;Username=event_tracking;Password=$($local.POSTGRES_PASSWORD);GSS Encryption Mode=Disable"
+    $env:ASPNETCORE_ENVIRONMENT = 'Testing'
+    $env:DOTNET_ENVIRONMENT = 'Testing'
+    $env:ConnectionStrings__Operator = "Host=127.0.0.1;Port=$($local.POSTGRES_PORT);Database=event_tracking;Username=event_tracking;Password=$($local.POSTGRES_PASSWORD);GSS Encryption Mode=Disable"
     $env:Storage__Profile = $Profile
     $env:Storage__MigrateOnStartup = 'false'
     $env:Storage__AllowProfileTransition = 'false'
@@ -24,5 +26,8 @@ try {
     Write-Host 'Created dashboard-login.local.json. Use its credentials at /dashboard/.'
     Write-Host 'Keep this ignored file private. Bootstrap never resets an existing account.'
 } finally {
-    foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }
+    foreach ($name in $names) {
+        if ($null -eq $previous[$name]) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
+        else { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }
+    }
 }

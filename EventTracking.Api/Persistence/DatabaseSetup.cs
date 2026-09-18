@@ -8,7 +8,7 @@ namespace EventTracking.Api.Persistence;
 public static class DatabaseSetup
 {
     public static async Task InitializeAsync(IServiceProvider services, IConfiguration configuration, IHostEnvironment environment,
-        bool migrate, bool provision, CancellationToken ct = default)
+        bool migrate, bool provision, bool operatorMode = false, CancellationToken ct = default)
     {
         var options = services.GetRequiredService<StorageOptions>();
         await using var db = await services.GetRequiredService<IDbContextFactory<TrackingDbContext>>().CreateDbContextAsync(ct);
@@ -17,6 +17,13 @@ public static class DatabaseSetup
             throw new InvalidOperationException("Apply database migrations with --migrate before starting the API.");
         var source = services.GetRequiredService<NpgsqlDataSource>();
         await using var connection = await source.OpenConnectionAsync(ct);
+        if (!operatorMode && !environment.IsDevelopment() && !options.MigrateOnStartup)
+        {
+            await using var state = DatabaseSql.Command(connection, null, "SELECT profile FROM storage_state WHERE id=1");
+            if ((string?)await state.ExecuteScalarAsync(ct) != options.Profile)
+                throw new InvalidOperationException("Database profile differs or is uninitialized. Use the operator command before starting runtime instances.");
+            return;
+        }
         await using var transaction = await connection.BeginTransactionAsync(ct);
         await using (var insert = DatabaseSql.Command(connection, transaction,
             "INSERT INTO storage_state (id,profile) VALUES (1,$1) ON CONFLICT (id) DO NOTHING", options.Profile))
@@ -40,11 +47,13 @@ public static class DatabaseSetup
                 ProjectKeys.Validate(key);
                 await using (var project = DatabaseSql.Command(connection, transaction,
                     "INSERT INTO projects (id,event_count,stored_bytes) VALUES ($1,0,0) ON CONFLICT (id) DO NOTHING", key.ProjectId))
-                    await project.ExecuteNonQueryAsync(ct);
+                    if (await project.ExecuteNonQueryAsync(ct) == 1)
+                        await AuditLog.Write(connection, transaction, "operator:provision", key.ProjectId, "project.created", key.ProjectId, new { }, ct);
                 await using (var credential = DatabaseSql.Command(connection, transaction,
                     "INSERT INTO credentials (key_hash,project_id,permissions,revoked) VALUES ($1,$2,$3,$4) ON CONFLICT (key_hash) DO NOTHING",
                     key.KeyHash.ToUpperInvariant(), key.ProjectId, key.Permissions, key.Revoked))
-                    await credential.ExecuteNonQueryAsync(ct);
+                    if (await credential.ExecuteNonQueryAsync(ct) == 1)
+                        await AuditLog.Write(connection, transaction, "operator:provision", key.ProjectId, "key.provisioned", key.KeyHash.ToUpperInvariant(), new { permissions = key.Permissions, revoked = key.Revoked }, ct);
                 await using var existing = DatabaseSql.Command(connection, transaction, "SELECT project_id FROM credentials WHERE key_hash=$1", key.KeyHash.ToUpperInvariant());
                 if ((string?)await existing.ExecuteScalarAsync(ct) != key.ProjectId) throw new InvalidOperationException("A key hash cannot be reassigned to another project.");
             }

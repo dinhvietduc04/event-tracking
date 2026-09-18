@@ -2,6 +2,8 @@
 
 Local MVP feature scope implemented September 17, 2026. The user prioritized this milestone after M3-01. It runs on the current Hosted and Distributed PostgreSQL profiles; M3-02–04 RabbitMQ/retry/dead-letter work is still outstanding. Production controls remain milestone 5. This change has not been deployed to Vercel/Neon.
 
+Later changes: [M5-01](MILESTONE_5.md) adds project administration APIs, key rotation, audited account recovery and session invalidation. Its upgrade requires a fresh login and explicit admin grants for existing memberships; the milestone 4 descriptions below record the original feature scope.
+
 ## Task ledger
 
 | Task | Result | Evidence |

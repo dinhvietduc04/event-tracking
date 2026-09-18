@@ -13,10 +13,17 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.DataProtection;
 
-string[] operations = ["--migrate", "--provision", "--retain", "--revoke", "--storage-info", "--dashboard-provision"];
+string[] operations = ["--migrate", "--provision", "--retain", "--revoke", "--storage-info", "--dashboard-provision", "--dashboard-admin", "--grant-runtime", "--protect-keys"];
+foreach (string exclusive in new[] { "--dashboard-admin", "--grant-runtime", "--protect-keys" })
+    if (args.Contains(exclusive) && args.Any(arg => operations.Contains(arg) && arg != exclusive && arg != "--migrate"))
+        throw new InvalidOperationException($"Run {exclusive} separately from other operator actions (it may be combined with --migrate).");
 var builder = WebApplication.CreateBuilder(args.Where(arg => !operations.Contains(arg)).ToArray());
+bool operatorMode = args.Any(operations.Contains);
+bool strict = ProductionSecurity.Required(builder.Environment.EnvironmentName);
 var storage = builder.Configuration.GetSection("Storage").Get<StorageOptions>() ?? new();
 storage.Validate(builder.Configuration);
+ProductionSecurity.Validate(builder.Configuration, storage, strict, operatorMode, api: true);
+if (operatorMode && !storage.Durable) throw new InvalidOperationException("Database operator commands require a durable profile.");
 builder.Services.AddSingleton(storage);
 bool dashboard = storage.Durable && builder.Configuration.GetValue("Dashboard:Enabled", builder.Environment.IsDevelopment());
 DashboardAccess.Configure(builder.Services, builder.Environment.IsDevelopment());
@@ -68,18 +75,23 @@ builder.Services.AddProblemDetails();
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 if (storage.Durable)
 {
-    string connection = builder.Configuration.GetConnectionString("Tracking")
-        ?? throw new InvalidOperationException("Set ConnectionStrings:Tracking for PostgreSQL, or explicitly select Storage:Profile=Volatile for the old local prototype.");
+    string connection = ProductionSecurity.Connection(builder.Configuration, strict, operatorMode);
     builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connection));
     builder.Services.AddDbContextFactory<TrackingDbContext>(options => options.UseNpgsql(connection));
     // Cookies and antiforgery tokens must survive instance changes and container restarts.
-    builder.Services.AddDataProtection()
+    var protection = builder.Services.AddDataProtection()
         .SetApplicationName("EventTracking")
         .PersistKeysToDbContext<TrackingDbContext>();
+    var certificates = !operatorMode || args.Contains("--protect-keys")
+        ? ProtectionCertificates.Load(builder.Configuration, required: strict && !operatorMode)
+        : new ProtectionCertificates();
+    certificates.Configure(protection);
+    builder.Services.AddSingleton(_ => certificates);
     builder.Services.AddSingleton<IProjectKeys, PostgresKeys>();
     builder.Services.AddSingleton<PostgresStore>();
     builder.Services.AddSingleton<PostgresAnalytics>();
     builder.Services.AddSingleton<DashboardAccounts>();
+    builder.Services.AddSingleton<SharedLoginLimiter>();
 }
 else builder.Services.AddSingleton<IProjectKeys, ProjectKeys>();
 builder.Services.AddSingleton<EventValidation>();
@@ -118,7 +130,28 @@ _ = app.Services.GetRequiredService<IProjectKeys>();
 _ = app.Services.GetRequiredService<EventValidation>();
 if (storage.Durable)
 {
-    await DatabaseSetup.InitializeAsync(app.Services, app.Configuration, app.Environment, args.Contains("--migrate"), args.Contains("--provision"));
+    _ = app.Services.GetRequiredService<ProtectionCertificates>(); // Ensure the container owns certificate disposal.
+    if (strict)
+    {
+        await using var transport = await app.Services.GetRequiredService<NpgsqlDataSource>().OpenConnectionAsync();
+        // Opening with validated VerifyFull + GSS disabled proves the TLS handshake succeeded,
+        // including hostname/chain verification, even when a pooler terminates client TLS.
+        if (!operatorMode) await RuntimeDatabaseAccess.Verify(app.Services.GetRequiredService<NpgsqlDataSource>(), "Api");
+    }
+    await DatabaseSetup.InitializeAsync(app.Services, app.Configuration, app.Environment, args.Contains("--migrate"), args.Contains("--provision"), operatorMode);
+    if (args.Contains("--grant-runtime"))
+    {
+        await RuntimeDatabaseAccess.Grant(app.Services.GetRequiredService<NpgsqlDataSource>(),
+            app.Configuration["Administration:RoleName"] ?? "", app.Configuration["Administration:RoleKind"] ?? "");
+        app.Logger.LogInformation("Runtime database grants applied and audited.");
+        return;
+    }
+    if (args.Contains("--protect-keys"))
+    {
+        int count = await ProtectionCertificates.ProtectStoredKeys(app.Services);
+        app.Logger.LogInformation("Encrypted {Count} stored protection keys", count);
+        return;
+    }
     if (args.Contains("--dashboard-provision") || (dashboard && app.Environment.IsDevelopment()
         && !string.IsNullOrEmpty(app.Configuration["Dashboard:Bootstrap:Password"])))
     {
@@ -135,7 +168,8 @@ if (storage.Durable)
         await using var reader = await command.ExecuteReaderAsync();
         await reader.ReadAsync();
         Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { profile = storage.Profile, databaseBytes = reader.GetInt64(0),
-            maxDatabaseBytes = storage.MaxDatabaseBytes, pendingEvents = reader.GetInt64(1), tls = reader.GetBoolean(2) }));
+            maxDatabaseBytes = storage.MaxDatabaseBytes, pendingEvents = reader.GetInt64(1), tls = reader.GetBoolean(2),
+            tlsVerified = new NpgsqlConnectionStringBuilder(connection.ConnectionString) is { SslMode: SslMode.VerifyFull, GssEncryptionMode: GssEncryptionMode.Disable } }));
         return;
     }
     if (args.Contains("--retain"))
@@ -148,18 +182,41 @@ if (storage.Durable)
     {
         string hash = app.Configuration["Administration:KeyHash"] ?? throw new InvalidOperationException("Set Administration:KeyHash to revoke a key.");
         await using var connection = await app.Services.GetRequiredService<NpgsqlDataSource>().OpenConnectionAsync();
-        await using var command = DatabaseSql.Command(connection, null, "UPDATE credentials SET revoked=true WHERE key_hash=$1", hash.ToUpperInvariant());
-        if (await command.ExecuteNonQueryAsync() != 1) throw new InvalidOperationException("Credential not found.");
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using var command = DatabaseSql.Command(connection, transaction, "UPDATE credentials SET revoked=true WHERE key_hash=$1 RETURNING project_id", hash.ToUpperInvariant());
+        if (await command.ExecuteScalarAsync() is not string projectId) throw new InvalidOperationException("Credential not found.");
+        await AuditLog.Write(connection, transaction, "operator:revoke", projectId, "key.revoked", hash.ToUpperInvariant(), new { });
+        await transaction.CommitAsync();
+        return;
+    }
+    if (args.Contains("--dashboard-admin"))
+    {
+        await DashboardOperator.Execute(app.Services.GetRequiredService<NpgsqlDataSource>(), app.Configuration);
+        app.Logger.LogInformation("Dashboard administration completed; audit record committed.");
         return;
     }
     if (args.Contains("--migrate") || args.Contains("--provision")) return;
+    if (strict) await ProtectionCertificates.VerifyStoredKeys(app.Services);
 }
 
 else app.Logger.LogWarning("Explicit Volatile profile: accepted events are lost on restart and retries double-count.");
 
 app.UseExceptionHandler();
 if (app.Configuration.GetValue<bool>("ReverseProxy:TrustForwardedProto")) app.UseForwardedHeaders();
-app.UseHttpsRedirection();
+if (strict)
+{
+    app.UseHsts();
+    app.Use(async (context, next) =>
+    {
+        if (!context.Request.IsHttps && !context.Request.Path.StartsWithSegments("/health"))
+        {
+            await Results.Problem(statusCode: 400, title: "HTTPS is required.").ExecuteAsync(context);
+            return;
+        }
+        await next(context);
+    });
+}
+if (!strict) app.UseHttpsRedirection();
 app.UseRouting();
 app.Use(RequestBoundary.Invoke);
 app.UseAuthentication();

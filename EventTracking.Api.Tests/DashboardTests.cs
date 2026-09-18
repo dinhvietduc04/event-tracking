@@ -122,7 +122,7 @@ public sealed class DashboardTests
     }
 
     [PostgresFact]
-    public async Task ProductionLoginBehindHttpsProxy_KeepsSecureCookiesAndAuthenticates()
+    public async Task NonDevelopmentLoginBehindHttpsProxy_KeepsSecureCookiesAndAuthenticates()
     {
         await using var db = await PostgresTestDatabase.Create();
         var settings = Settings;
@@ -251,7 +251,7 @@ public sealed class DashboardTests
     }
 
     [PostgresFact]
-    public async Task ProductionDashboardIsOptIn_AndBootstrapDoesNotResetStoredAccounts()
+    public async Task NonDevelopmentDashboardIsOptIn_AndBootstrapDoesNotResetStoredAccounts()
     {
         await using var db = await PostgresTestDatabase.Create();
         using (var app = db.App("Hosted", settings: Settings))

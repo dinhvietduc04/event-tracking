@@ -1,6 +1,6 @@
 # Analytics and Event Tracking Platform: project plan
 
-Status, September 17, 2026: milestones 1–2 and milestone 4's local MVP feature scope are implemented. At the user's request, milestone 4 was prioritized after M3-01 worker extraction; RabbitMQ, retries/dead letters and outbox monitoring in milestone 3 remain unfinished. The hosting spike records successful Hosted health checks; this dashboard change has not been deployed publicly. See [milestone 3 remaining tasks](MILESTONE_3.md), [milestone 4 setup and evidence](MILESTONE_4.md), [hosting spike results](HOSTING_SPIKE.md), and the [current API contract](API_V1.md).
+Status, September 18, 2026: milestones 1–2 and milestone 4's local MVP feature scope are implemented. M5-01 adds project administration and audited account recovery; M5-02 adds production configuration, restricted database grants, TLS verification, encrypted cookie keys, shared login limits and a migration command. Both are verified locally; [milestone 5's task ledger](MILESTONE_5.md) tracks the remaining release work. At the user's request, milestone 4 was prioritized after M3-01 worker extraction; RabbitMQ, retries/dead letters and outbox monitoring in milestone 3 remain unfinished. The hosting spike records successful Hosted health checks; milestone 5 has not been deployed publicly. See [milestone 3 remaining tasks](MILESTONE_3.md), [milestone 4 setup and evidence](MILESTONE_4.md), [hosting spike results](HOSTING_SPIKE.md), and the [current API contract](API_V1.md).
 
 Build a platform where developers send application events and product teams explore usage, conversion, and retention. Each milestone should produce a runnable demo and evidence that its behavior is correct.
 
@@ -230,6 +230,8 @@ Proposed versioned payload; this is not the current API contract:
 
 **Depends on:** milestone 4. This is the required first-production-release gate; complete controls for every store actually deployed.
 
+**Status:** M5-01 administration and M5-02 production configuration/secrets are implemented locally. See [task ledger](MILESTONE_5.md) and [security/migration guide](PRODUCTION_SECURITY.md). M5-03 telemetry and alerts is next; no production-readiness claim is made.
+
 - Add production configuration, secret handling, TLS, least-privilege service credentials, credential rotation, user roles, and audit records for administrative actions.
 - Export metrics/traces and add alerts for processing lag, dead letters, disk growth, and elevated rejection/error rates.
 - Document deployment, rollback, migrations, backup schedules, and restore procedures; execute a restore drill and verify restored analytics.
@@ -313,4 +315,4 @@ For each milestone: implement the vertical slice, update API/setup documentation
 | Retention period and data sensitivity? | Synthetic data; provisional 30-day raw retention | Changes storage cost, event acceptance window, and deletion work |
 | Which report matters most: usage, funnels, retention, or revenue? | Usage first, then funnels and retention | Determines the ordering inside milestones 4 and 6 |
 
-The free-hosting preference and first integration are recorded; provider viability still requires the remaining hosting-spike checks. Milestones 1–2, M3-01 and the requested milestone 4 feature scope are implemented locally. M3-02, the confirmed RabbitMQ outbox and idempotent consumer, remains the next reliability dependency. Complete M3-02–04 and milestone 5 before a production release.
+The free-hosting preference and first integration are recorded; provider viability still requires the remaining hosting-spike checks. Milestones 1–2, M3-01, milestone 4 and M5-01–02 are implemented locally. The user requested continuing milestone 5; M5-03 telemetry and alerts is next for the Hosted release path. M3-02–04 remain reliability dependencies for the planned distributed release. Finish all applicable milestone 5 controls before a production release.
