@@ -38,7 +38,9 @@ internal sealed class PostgresTestDatabase : IAsyncDisposable
         Dictionary<string, string?>? settings = null) => new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
     {
         if (seed) TestProjects.Configure(builder);
-        else builder.UseEnvironment("Production");
+        // Exercise non-development HTTP defaults without requiring production TLS/role secrets.
+        // ProductionSecurityTests cover the strict deployment configuration separately.
+        else builder.UseEnvironment("Testing");
         builder.UseSetting("Storage:Profile", profile);
         builder.UseSetting("Storage:MigrateOnStartup", "true");
         builder.UseSetting("ConnectionStrings:Tracking", ConnectionString);

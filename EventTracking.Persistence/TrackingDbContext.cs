@@ -65,6 +65,7 @@ public sealed class DashboardUserRecord
     public string Username { get; set; } = "";
     public string PasswordHash { get; set; } = "";
     public bool Disabled { get; set; }
+    public int SessionVersion { get; set; }
 }
 
 public sealed class ProjectMembership
@@ -72,6 +73,25 @@ public sealed class ProjectMembership
     public Guid UserId { get; set; }
     public string ProjectId { get; set; } = "";
     public bool CanDemo { get; set; }
+    public bool CanManage { get; set; }
+}
+
+public sealed class AuditRecord
+{
+    public Guid Id { get; set; }
+    public DateTimeOffset OccurredAt { get; set; }
+    public string Actor { get; set; } = "";
+    public string? ProjectId { get; set; }
+    public string Action { get; set; } = "";
+    public string Target { get; set; } = "";
+    public string Details { get; set; } = "{}";
+}
+
+public sealed class LoginRateLimit
+{
+    public string Bucket { get; set; } = "";
+    public DateTimeOffset WindowStart { get; set; }
+    public int Attempts { get; set; }
 }
 
 public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> options) : DbContext(options), IDataProtectionKeyContext
@@ -92,12 +112,26 @@ public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> option
         {
             e.ToTable("dashboard_users"); e.HasKey(x => x.Id);
             e.Property(x => x.Username).HasMaxLength(60); e.HasIndex(x => x.Username).IsUnique();
+            e.Property(x => x.SessionVersion).HasDefaultValue(0);
         });
         model.Entity<ProjectMembership>(e =>
         {
             e.ToTable("project_memberships"); e.HasKey(x => new { x.UserId, x.ProjectId });
+            e.Property(x => x.CanManage).HasDefaultValue(false);
             e.HasOne<DashboardUserRecord>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<ProjectRecord>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        });
+        model.Entity<AuditRecord>(e =>
+        {
+            e.ToTable("audit_records"); e.HasKey(x => x.Id);
+            e.Property(x => x.Actor).HasMaxLength(200); e.Property(x => x.ProjectId).HasMaxLength(100);
+            e.Property(x => x.Action).HasMaxLength(100); e.Property(x => x.Target).HasMaxLength(200);
+            e.Property(x => x.Details).HasColumnType("jsonb");
+            e.HasIndex(x => new { x.ProjectId, x.OccurredAt, x.Id });
+        });
+        model.Entity<LoginRateLimit>(e =>
+        {
+            e.ToTable("login_rate_limits"); e.HasKey(x => x.Bucket); e.Property(x => x.Bucket).HasMaxLength(20);
         });
         model.Entity<CredentialRecord>(e =>
         {

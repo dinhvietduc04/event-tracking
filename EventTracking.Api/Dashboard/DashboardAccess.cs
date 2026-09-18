@@ -8,7 +8,7 @@ using Npgsql;
 
 namespace EventTracking.Api.Dashboard;
 
-public sealed record DashboardPermission(bool Project = false, bool Demo = false);
+public sealed record DashboardPermission(bool Project = false, bool Demo = false, bool Manage = false);
 
 public static class DashboardAccess
 {
@@ -50,7 +50,9 @@ public static class DashboardAccess
             if (context.User.Identity?.IsAuthenticated != true)
             { await Denied(context, 401, "Sign in to continue."); return; }
             await using var connection = await context.RequestServices.GetRequiredService<NpgsqlDataSource>().OpenConnectionAsync(context.RequestAborted);
-            await using var user = DatabaseSql.Command(connection, null, "SELECT count(*) FROM dashboard_users WHERE id=$1 AND NOT disabled", context.UserId());
+            if (!int.TryParse(context.User.FindFirstValue("session_version"), out int version))
+            { await context.SignOutAsync(Scheme); await Denied(context, 401, "Sign in again to continue."); return; }
+            await using var user = DatabaseSql.Command(connection, null, "SELECT count(*) FROM dashboard_users WHERE id=$1 AND NOT disabled AND session_version=$2", context.UserId(), version);
             if (Convert.ToInt64(await user.ExecuteScalarAsync(context.RequestAborted)) != 1)
             {
                 await context.SignOutAsync(Scheme);
@@ -60,9 +62,12 @@ public static class DashboardAccess
             {
                 var projectId = context.Request.RouteValues["projectId"]?.ToString() ?? "";
                 await using var member = DatabaseSql.Command(connection, null,
-                    "SELECT can_demo FROM project_memberships WHERE user_id=$1 AND project_id=$2", context.UserId(), projectId);
-                var canDemo = await member.ExecuteScalarAsync(context.RequestAborted);
-                if (canDemo is not bool allowed || (permission.Demo && !allowed))
+                    "SELECT can_demo,can_manage FROM project_memberships WHERE user_id=$1 AND project_id=$2", context.UserId(), projectId);
+                await using var reader = await member.ExecuteReaderAsync(context.RequestAborted);
+                if (!await reader.ReadAsync(context.RequestAborted))
+                { await Denied(context, 403, "You do not have access to this project or action."); return; }
+                bool allowed = reader.GetBoolean(0), manage = reader.GetBoolean(1);
+                if ((permission.Demo && !allowed) || (permission.Manage && !manage))
                 { await Denied(context, 403, "You do not have access to this project or action."); return; }
                 context.Items[typeof(ProjectContext)] = new ProjectContext(projectId, allowed ? ["read", "ingest"] : ["read"]);
             }

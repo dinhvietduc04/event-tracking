@@ -4,7 +4,10 @@ using Npgsql;
 
 namespace EventTracking.Api.Dashboard;
 
-public sealed record DashboardProject(string Id, string Name, bool CanDemo);
+public sealed record DashboardProject(string Id, string Name, bool CanDemo, bool CanManage = false)
+{
+    public string Role => CanManage ? "admin" : CanDemo ? "contributor" : "viewer";
+}
 
 public sealed class DashboardAccounts(NpgsqlDataSource source)
 {
@@ -17,10 +20,10 @@ public sealed class DashboardAccounts(NpgsqlDataSource source)
         if (username is null || username.Length > 60 || password is null || password.Length > 256) return null;
         await using var connection = await source.OpenConnectionAsync(ct);
         await using var command = DatabaseSql.Command(connection, null,
-            "SELECT id,username,password_hash,disabled FROM dashboard_users WHERE username=$1", username.Trim().ToLowerInvariant());
+            "SELECT id,username,password_hash,disabled,session_version FROM dashboard_users WHERE username=$1", username.Trim().ToLowerInvariant());
         DashboardUserRecord? user = null;
         await using (var reader = await command.ExecuteReaderAsync(ct))
-            if (await reader.ReadAsync(ct)) user = new() { Id = reader.GetGuid(0), Username = reader.GetString(1), PasswordHash = reader.GetString(2), Disabled = reader.GetBoolean(3) };
+            if (await reader.ReadAsync(ct)) user = new() { Id = reader.GetGuid(0), Username = reader.GetString(1), PasswordHash = reader.GetString(2), Disabled = reader.GetBoolean(3), SessionVersion = reader.GetInt32(4) };
         var result = hasher.VerifyHashedPassword(user ?? Dummy, user?.PasswordHash ?? DummyHash, password);
         return user is { Disabled: false } && result != PasswordVerificationResult.Failed ? user : null;
     }
@@ -29,10 +32,10 @@ public sealed class DashboardAccounts(NpgsqlDataSource source)
     {
         await using var connection = await source.OpenConnectionAsync(ct);
         await using var command = DatabaseSql.Command(connection, null,
-            "SELECT p.id,coalesce(nullif(p.name,''),p.id),m.can_demo FROM projects p JOIN project_memberships m ON m.project_id=p.id WHERE m.user_id=$1 ORDER BY p.id", userId);
+            "SELECT p.id,coalesce(nullif(p.name,''),p.id),m.can_demo,m.can_manage FROM projects p JOIN project_memberships m ON m.project_id=p.id WHERE m.user_id=$1 ORDER BY p.id", userId);
         await using var reader = await command.ExecuteReaderAsync(ct);
         List<DashboardProject> projects = [];
-        while (await reader.ReadAsync(ct)) projects.Add(new(reader.GetString(0), reader.GetString(1), reader.GetBoolean(2)));
+        while (await reader.ReadAsync(ct)) projects.Add(new(reader.GetString(0), reader.GetString(1), reader.GetBoolean(2), reader.GetBoolean(3)));
         return projects;
     }
 
@@ -48,9 +51,10 @@ public sealed class DashboardAccounts(NpgsqlDataSource source)
         await using (var project = DatabaseSql.Command(connection, transaction,
             "INSERT INTO projects(id,name,event_count,stored_bytes) VALUES($1,$2,0,0)", id, name)) await project.ExecuteNonQueryAsync(ct);
         await using (var member = DatabaseSql.Command(connection, transaction,
-            "INSERT INTO project_memberships(user_id,project_id,can_demo) VALUES($1,$2,true)", userId, id)) await member.ExecuteNonQueryAsync(ct);
+            "INSERT INTO project_memberships(user_id,project_id,can_demo,can_manage) VALUES($1,$2,true,true)", userId, id)) await member.ExecuteNonQueryAsync(ct);
+        await AuditLog.Write(connection, transaction, userId.ToString(), id, "project.created", id, new { }, ct);
         await transaction.CommitAsync(ct);
-        return new(id, name, true);
+        return new(id, name, true, true);
     }
 
     public async Task<bool> Provision(IConfiguration config, CancellationToken ct = default)
@@ -73,11 +77,15 @@ public sealed class DashboardAccounts(NpgsqlDataSource source)
         foreach (string projectId in projects.Distinct())
         {
             await using (var project = DatabaseSql.Command(connection, transaction,
-                "INSERT INTO projects(id,name,event_count,stored_bytes) VALUES($1,$1,0,0) ON CONFLICT(id) DO NOTHING", projectId)) await project.ExecuteNonQueryAsync(ct);
+                "INSERT INTO projects(id,name,event_count,stored_bytes) VALUES($1,$1,0,0) ON CONFLICT(id) DO NOTHING", projectId))
+                if (await project.ExecuteNonQueryAsync(ct) == 1)
+                    await AuditLog.Write(connection, transaction, "operator:bootstrap", projectId, "project.created", projectId, new { }, ct);
             await using var member = DatabaseSql.Command(connection, transaction,
                 "INSERT INTO project_memberships(user_id,project_id,can_demo) VALUES($1,$2,true)", account.Id, projectId);
             await member.ExecuteNonQueryAsync(ct);
+            await AuditLog.Write(connection, transaction, "operator:bootstrap", projectId, "membership.created", account.Id.ToString(), new { role = "contributor" }, ct);
         }
+        await AuditLog.Write(connection, transaction, "operator:bootstrap", null, "account.created", account.Id.ToString(), new { }, ct);
         await transaction.CommitAsync(ct);
         return true;
     }

@@ -126,6 +126,7 @@ public sealed class WorkerTests
                 RedirectStandardOutput = true, RedirectStandardError = true
             };
             start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "worker-process", "EventTracking.Worker.dll"));
+            start.Environment["DOTNET_ENVIRONMENT"] = "Testing";
             start.Environment["ConnectionStrings__Tracking"] = new NpgsqlConnectionStringBuilder(connection)
                 { ApplicationName = name, CommandTimeout = 30 }.ConnectionString;
             // Command-line values win over ambient environment and appsettings in the test directory.

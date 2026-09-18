@@ -4,6 +4,9 @@
 .env
 .env.*
 **/*.local.json
+.secrets
+**/*.pfx
+**/*.p12
 TestResults
 EventTracking.Api.Tests
 docs

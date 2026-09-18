@@ -87,13 +87,13 @@ public sealed class DemoShopTests : IClassFixture<PrototypeFactory>
     }
 
     [Fact]
-    public async Task ShopAssetsAreAvailableInDevelopment_AndDemoIsOffInProduction()
+    public async Task ShopAssetsAreAvailableInDevelopment_AndDemoIsOffOutsideDevelopment()
     {
         using var client = _factory.CreateClient();
         Assert.Contains("A make-believe shop", await client.GetStringAsync("/shop/index.html"));
         (await client.GetAsync("/shop/shop.js")).EnsureSuccessStatusCode();
         (await client.GetAsync("/shop/shop.css")).EnsureSuccessStatusCode();
-        using var production = _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Production"));
+        using var production = _factory.WithWebHostBuilder(builder => builder.UseEnvironment("Testing"));
         using var productionClient = production.CreateClient();
         Assert.Equal(HttpStatusCode.NotFound, (await productionClient.GetAsync("/demo/bootstrap")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await productionClient.GetAsync("/shop/index.html")).StatusCode);

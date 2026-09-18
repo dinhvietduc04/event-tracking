@@ -47,6 +47,7 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     environment:
+      DOTNET_ENVIRONMENT: Development
       ConnectionStrings__Tracking: "${ConnectionStrings__Tracking:-Host=postgres;Database=event_tracking;Username=event_tracking;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable}"
       Storage__Profile: ${STORAGE_PROFILE:-Distributed}
     restart: on-failure:5

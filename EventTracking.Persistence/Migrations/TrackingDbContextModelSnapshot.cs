@@ -22,6 +22,52 @@ namespace EventTracking.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("EventTracking.Persistence.AuditRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("action");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("actor");
+
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("details");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("ProjectId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("project_id");
+
+                    b.Property<string>("Target")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("target");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "OccurredAt", "Id");
+
+                    b.ToTable("audit_records", (string)null);
+                });
+
             modelBuilder.Entity("EventTracking.Persistence.CredentialRecord", b =>
                 {
                     b.Property<string>("KeyHash")
@@ -65,6 +111,12 @@ namespace EventTracking.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("password_hash");
+
+                    b.Property<int>("SessionVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("session_version");
 
                     b.Property<string>("Username")
                         .IsRequired()
@@ -209,6 +261,26 @@ namespace EventTracking.Persistence.Migrations
                     b.ToTable("inbox", (string)null);
                 });
 
+            modelBuilder.Entity("EventTracking.Persistence.LoginRateLimit", b =>
+                {
+                    b.Property<string>("Bucket")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("bucket");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTimeOffset>("WindowStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("window_start");
+
+                    b.HasKey("Bucket");
+
+                    b.ToTable("login_rate_limits", (string)null);
+                });
+
             modelBuilder.Entity("EventTracking.Persistence.ProjectMembership", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -222,6 +294,12 @@ namespace EventTracking.Persistence.Migrations
                     b.Property<bool>("CanDemo")
                         .HasColumnType("boolean")
                         .HasColumnName("can_demo");
+
+                    b.Property<bool>("CanManage")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("can_manage");
 
                     b.HasKey("UserId", "ProjectId");
 

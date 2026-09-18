@@ -38,6 +38,9 @@ jobs:
       - run: dotnet restore EventTracking.slnx
       - run: dotnet build EventTracking.slnx --configuration Release --no-restore
       - run: dotnet test EventTracking.slnx --configuration Release --no-build --logger trx --results-directory TestResults
+      - name: Verify production database security
+        shell: pwsh
+        run: ./scripts/Test-ProductionProfile.ps1
       - name: Prepare browser smoke database
         run: psql -h localhost -U event_tracking -d event_tracking -c 'CREATE DATABASE dashboard_smoke_ci;'
         env:

@@ -20,12 +20,18 @@ public static class DashboardEndpoints
         var group = app.MapGroup("/dashboard-api").RequireRateLimiting("dashboard");
         group.MapGet("/auth/token", (HttpContext context, IAntiforgery csrf) =>
             Results.Ok(new { token = csrf.GetAndStoreTokens(context).RequestToken }));
-        group.MapPost("/auth/login", async (DashboardLogin request, HttpContext context, DashboardAccounts accounts, CancellationToken ct) =>
+        group.MapPost("/auth/login", async (DashboardLogin request, HttpContext context, DashboardAccounts accounts, SharedLoginLimiter limiter, CancellationToken ct) =>
         {
+            if (!await limiter.Acquire(request.Username, ct))
+            {
+                context.Response.Headers.RetryAfter = "60";
+                return Results.Problem(statusCode: 429, title: "Too many sign-in attempts. Try again in a minute.");
+            }
             var user = await accounts.Authenticate(request.Username, request.Password, ct);
             if (user is null) return Results.Problem(statusCode: 401, title: "Username or password is incorrect.");
             var principal = new ClaimsPrincipal(new ClaimsIdentity([
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim(ClaimTypes.Name, user.Username)
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim(ClaimTypes.Name, user.Username),
+                new Claim("session_version", user.SessionVersion.ToString(System.Globalization.CultureInfo.InvariantCulture))
             ], DashboardAccess.Scheme));
             await context.SignInAsync(DashboardAccess.Scheme, principal);
             return Results.Ok(new { username = user.Username });
@@ -35,6 +41,8 @@ public static class DashboardEndpoints
             await context.SignOutAsync(DashboardAccess.Scheme);
             return Results.NoContent();
         }).WithMetadata(new DashboardPermission());
+
+        group.MapAdministration();
         group.MapGet("/session", async (HttpContext context, DashboardAccounts accounts, CancellationToken ct) =>
             Results.Ok(new { username = context.User.Identity!.Name, projects = await accounts.Projects(context.UserId(), ct) }))
             .WithMetadata(new DashboardPermission());
