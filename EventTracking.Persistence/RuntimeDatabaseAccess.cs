@@ -12,7 +12,9 @@ public static class RuntimeDatabaseAccess
         ["event_identity"] = ["SELECT", "INSERT"], ["events"] = ["SELECT", "INSERT"], ["inbox"] = ["SELECT", "INSERT"],
         ["dashboard_users"] = ["SELECT", "UPDATE (id)"], ["project_memberships"] = ["SELECT", "INSERT", "UPDATE", "DELETE"],
         ["audit_records"] = ["SELECT", "INSERT"], ["data_protection_keys"] = ["SELECT", "INSERT"],
-        ["login_rate_limits"] = ["SELECT", "INSERT", "UPDATE"]
+        ["login_rate_limits"] = ["SELECT", "INSERT", "UPDATE"],
+        // Product analytics definitions are dashboard-owned; runtime may read/write them but no other table is broadened.
+        ["saved_query_views"] = ["SELECT", "INSERT", "UPDATE"], ["event_schemas"] = ["SELECT", "INSERT"]
     };
     private static readonly Dictionary<string, string[]> Worker = new()
     {

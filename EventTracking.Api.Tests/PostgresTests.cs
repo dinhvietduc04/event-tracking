@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using EventTracking.Worker;
 using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace EventTracking.Api.Tests;
 
@@ -52,7 +53,8 @@ public sealed class PostgresTests
             Assert.True((await (await client.PostAsJsonAsync("/v1/events", payload)).Content.ReadFromJsonAsync<EventAcceptance>())!.AlreadyAccepted);
             Assert.Equal(1, await db.Scalar("SELECT count(*) FROM events"));
             Assert.Equal(0, await db.Scalar("SELECT count(*) FROM inbox WHERE processed_at IS NULL"));
-            Assert.Equal(5, await db.Scalar("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            long definedMigrations = typeof(TrackingDbContext).Assembly.GetTypes().LongCount(type => !type.IsAbstract && typeof(Migration).IsAssignableFrom(type));
+            Assert.Equal(definedMigrations, await db.Scalar("SELECT count(*) FROM \"__EFMigrationsHistory\""));
             await worker.StopAsync();
         }
     }

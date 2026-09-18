@@ -94,6 +94,26 @@ public sealed class LoginRateLimit
     public int Attempts { get; set; }
 }
 
+public sealed class SavedQueryView
+{
+    public Guid Id { get; set; }
+    public string ProjectId { get; set; } = "";
+    public Guid UserId { get; set; }
+    public string Name { get; set; } = "";
+    public string Definition { get; set; } = "{}";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public sealed class EventSchemaRecord
+{
+    public string ProjectId { get; set; } = "";
+    public string EventType { get; set; } = "";
+    public int Version { get; set; }
+    public string Definition { get; set; } = "{}";
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> options) : DbContext(options), IDataProtectionKeyContext
 {
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -103,6 +123,8 @@ public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> option
     public DbSet<InboxRecord> Inbox => Set<InboxRecord>();
     public DbSet<EventRecord> Events => Set<EventRecord>();
     public DbSet<StorageState> State => Set<StorageState>();
+    public DbSet<SavedQueryView> SavedViews => Set<SavedQueryView>();
+    public DbSet<EventSchemaRecord> EventSchemas => Set<EventSchemaRecord>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -132,6 +154,22 @@ public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> option
         model.Entity<LoginRateLimit>(e =>
         {
             e.ToTable("login_rate_limits"); e.HasKey(x => x.Bucket); e.Property(x => x.Bucket).HasMaxLength(20);
+        });
+        model.Entity<SavedQueryView>(e =>
+        {
+            e.ToTable("saved_query_views"); e.HasKey(x => x.Id);
+            e.Property(x => x.ProjectId).HasMaxLength(100); e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Definition).HasColumnType("jsonb");
+            e.HasIndex(x => new { x.ProjectId, x.UserId, x.Name }).IsUnique();
+            e.HasOne<ProjectRecord>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<DashboardUserRecord>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        model.Entity<EventSchemaRecord>(e =>
+        {
+            e.ToTable("event_schemas"); e.HasKey(x => new { x.ProjectId, x.EventType, x.Version });
+            e.Property(x => x.ProjectId).HasMaxLength(100); e.Property(x => x.EventType).HasMaxLength(100);
+            e.Property(x => x.Definition).HasColumnType("jsonb");
+            e.HasOne<ProjectRecord>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         });
         model.Entity<CredentialRecord>(e =>
         {

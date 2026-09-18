@@ -258,6 +258,8 @@ Proposed versioned payload; this is not the current API contract:
 
 **Demo:** use a small known dataset to explain exactly why each report has its displayed values.
 
+**Status:** implemented locally as durable dashboard APIs; see [Milestone 6 contract](MILESTONE_6.md). Fixture-level hand-calculation verification remains the release gate.
+
 ### Milestone 7 — Evaluate and add ClickHouse
 
 **Depends on:** stable analytics contracts and representative data from milestones 4 and 6, plus the production controls in milestone 5.

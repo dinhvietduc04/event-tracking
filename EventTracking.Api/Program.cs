@@ -90,6 +90,7 @@ if (storage.Durable)
     builder.Services.AddSingleton<IProjectKeys, PostgresKeys>();
     builder.Services.AddSingleton<PostgresStore>();
     builder.Services.AddSingleton<PostgresAnalytics>();
+    builder.Services.AddSingleton<ProductAnalytics>();
     builder.Services.AddSingleton<DashboardAccounts>();
     builder.Services.AddSingleton<SharedLoginLimiter>();
 }
