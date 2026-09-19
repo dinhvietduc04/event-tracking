@@ -15,16 +15,38 @@ namespace EventTracking.Persistence.Migrations
                 name: "broker_outbox",
                 columns: table => new
                 {
-                    project_id = table.Column<string>(type: "character varying(100)", nullable: false),
+                    project_id = table.Column<string>(
+                        type: "character varying(100)",
+                        nullable: false
+                    ),
                     event_id = table.Column<Guid>(type: "uuid", nullable: false),
                     payload = table.Column<string>(type: "jsonb", nullable: false),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    published_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    completed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    next_attempt_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    dead_lettered_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    created_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: false
+                    ),
+                    published_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
+                    completed_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
+                    next_attempt_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
+                    dead_lettered_at = table.Column<DateTimeOffset>(
+                        type: "timestamp with time zone",
+                        nullable: true
+                    ),
                     attempts = table.Column<int>(type: "integer", nullable: false),
-                    last_error = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true)
+                    last_error = table.Column<string>(
+                        type: "character varying(1000)",
+                        maxLength: 1000,
+                        nullable: true
+                    ),
                 },
                 constraints: table =>
                 {
@@ -34,20 +56,28 @@ namespace EventTracking.Persistence.Migrations
                         columns: x => new { x.project_id, x.event_id },
                         principalTable: "event_identity",
                         principalColumns: new[] { "project_id", "event_id" },
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_broker_outbox_completed_at_dead_lettered_at_next_attempt_at~",
                 table: "broker_outbox",
-                columns: new[] { "completed_at", "dead_lettered_at", "next_attempt_at", "created_at" });
+                columns: new[]
+                {
+                    "completed_at",
+                    "dead_lettered_at",
+                    "next_attempt_at",
+                    "created_at",
+                }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "broker_outbox");
+            migrationBuilder.DropTable(name: "broker_outbox");
         }
     }
 }

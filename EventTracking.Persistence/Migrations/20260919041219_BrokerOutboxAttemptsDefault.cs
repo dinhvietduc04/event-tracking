@@ -17,7 +17,8 @@ namespace EventTracking.Persistence.Migrations
                 nullable: false,
                 defaultValue: 0,
                 oldClrType: typeof(int),
-                oldType: "integer");
+                oldType: "integer"
+            );
         }
 
         /// <inheritdoc />
@@ -30,7 +31,8 @@ namespace EventTracking.Persistence.Migrations
                 nullable: false,
                 oldClrType: typeof(int),
                 oldType: "integer",
-                oldDefaultValue: 0);
+                oldDefaultValue: 0
+            );
         }
     }
 }

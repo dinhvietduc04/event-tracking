@@ -11,4 +11,5 @@ public sealed record TrackedEvent(
     IReadOnlyDictionary<string, object?>? Properties = null,
     string ProjectId = "demo-shop",
     string? AnonymousId = null,
-    int SchemaVersion = 1);
+    int SchemaVersion = 1
+);

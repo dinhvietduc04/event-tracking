@@ -1,5 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -26,8 +25,10 @@
 
   <!-- Execute the worker's own deployment output, not the test host's shared-framework dependency set. -->
   <Target Name="PublishWorkerForProcessTests" AfterTargets="Build">
-    <MSBuild Projects="../EventTracking.Worker/EventTracking.Worker.csproj" Targets="Publish"
-             Properties="Configuration=$(Configuration);NoBuild=true;PublishDir=$(TargetDir)worker-process/" />
+    <MSBuild
+      Projects="../EventTracking.Worker/EventTracking.Worker.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);NoBuild=true;PublishDir=$(TargetDir)worker-process/"
+    />
   </Target>
-
 </Project>

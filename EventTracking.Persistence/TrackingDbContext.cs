@@ -1,6 +1,6 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 
 namespace EventTracking.Persistence;
 
@@ -136,7 +136,9 @@ public sealed class EventSchemaRecord
     public DateTimeOffset CreatedAt { get; set; }
 }
 
-public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> options) : DbContext(options), IDataProtectionKeyContext
+public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> options)
+    : DbContext(options),
+        IDataProtectionKeyContext
 {
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
     public DbSet<ProjectRecord> Projects => Set<ProjectRecord>();
@@ -144,7 +146,8 @@ public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> option
     public DbSet<EventIdentity> Identities => Set<EventIdentity>();
     public DbSet<InboxRecord> Inbox => Set<InboxRecord>();
     public DbSet<EventRecord> Events => Set<EventRecord>();
-    public DbSet<ClickHouseProjectionRecord> ClickHouseProjection => Set<ClickHouseProjectionRecord>();
+    public DbSet<ClickHouseProjectionRecord> ClickHouseProjection =>
+        Set<ClickHouseProjectionRecord>();
     public DbSet<BrokerOutboxRecord> BrokerOutbox => Set<BrokerOutboxRecord>();
     public DbSet<StorageState> State => Set<StorageState>();
     public DbSet<SavedQueryView> SavedViews => Set<SavedQueryView>();
@@ -153,101 +156,222 @@ public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> option
     protected override void OnModelCreating(ModelBuilder model)
     {
         model.Entity<DataProtectionKey>().ToTable("data_protection_keys");
-        model.Entity<ProjectRecord>(e => { e.ToTable("projects"); e.HasKey(x => x.Id); e.Property(x => x.Id).HasMaxLength(100); e.Property(x => x.Name).HasMaxLength(100).HasDefaultValue(""); });
+        model.Entity<ProjectRecord>(e =>
+        {
+            e.ToTable("projects");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasMaxLength(100);
+            e.Property(x => x.Name).HasMaxLength(100).HasDefaultValue("");
+        });
         model.Entity<DashboardUserRecord>(e =>
         {
-            e.ToTable("dashboard_users"); e.HasKey(x => x.Id);
-            e.Property(x => x.Username).HasMaxLength(60); e.HasIndex(x => x.Username).IsUnique();
+            e.ToTable("dashboard_users");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Username).HasMaxLength(60);
+            e.HasIndex(x => x.Username).IsUnique();
             e.Property(x => x.SessionVersion).HasDefaultValue(0);
         });
         model.Entity<ProjectMembership>(e =>
         {
-            e.ToTable("project_memberships"); e.HasKey(x => new { x.UserId, x.ProjectId });
+            e.ToTable("project_memberships");
+            e.HasKey(x => new { x.UserId, x.ProjectId });
             e.Property(x => x.CanManage).HasDefaultValue(false);
-            e.HasOne<DashboardUserRecord>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
-            e.HasOne<ProjectRecord>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<DashboardUserRecord>()
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<ProjectRecord>()
+                .WithMany()
+                .HasForeignKey(x => x.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
         model.Entity<AuditRecord>(e =>
         {
-            e.ToTable("audit_records"); e.HasKey(x => x.Id);
-            e.Property(x => x.Actor).HasMaxLength(200); e.Property(x => x.ProjectId).HasMaxLength(100);
-            e.Property(x => x.Action).HasMaxLength(100); e.Property(x => x.Target).HasMaxLength(200);
+            e.ToTable("audit_records");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Actor).HasMaxLength(200);
+            e.Property(x => x.ProjectId).HasMaxLength(100);
+            e.Property(x => x.Action).HasMaxLength(100);
+            e.Property(x => x.Target).HasMaxLength(200);
             e.Property(x => x.Details).HasColumnType("jsonb");
-            e.HasIndex(x => new { x.ProjectId, x.OccurredAt, x.Id });
+            e.HasIndex(x => new
+            {
+                x.ProjectId,
+                x.OccurredAt,
+                x.Id,
+            });
         });
         model.Entity<LoginRateLimit>(e =>
         {
-            e.ToTable("login_rate_limits"); e.HasKey(x => x.Bucket); e.Property(x => x.Bucket).HasMaxLength(20);
+            e.ToTable("login_rate_limits");
+            e.HasKey(x => x.Bucket);
+            e.Property(x => x.Bucket).HasMaxLength(20);
         });
         model.Entity<SavedQueryView>(e =>
         {
-            e.ToTable("saved_query_views"); e.HasKey(x => x.Id);
-            e.Property(x => x.ProjectId).HasMaxLength(100); e.Property(x => x.Name).HasMaxLength(100);
+            e.ToTable("saved_query_views");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ProjectId).HasMaxLength(100);
+            e.Property(x => x.Name).HasMaxLength(100);
             e.Property(x => x.Definition).HasColumnType("jsonb");
-            e.HasIndex(x => new { x.ProjectId, x.UserId, x.Name }).IsUnique();
-            e.HasOne<ProjectRecord>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
-            e.HasOne<DashboardUserRecord>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new
+                {
+                    x.ProjectId,
+                    x.UserId,
+                    x.Name,
+                })
+                .IsUnique();
+            e.HasOne<ProjectRecord>()
+                .WithMany()
+                .HasForeignKey(x => x.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<DashboardUserRecord>()
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
         model.Entity<EventSchemaRecord>(e =>
         {
-            e.ToTable("event_schemas"); e.HasKey(x => new { x.ProjectId, x.EventType, x.Version });
-            e.Property(x => x.ProjectId).HasMaxLength(100); e.Property(x => x.EventType).HasMaxLength(100);
+            e.ToTable("event_schemas");
+            e.HasKey(x => new
+            {
+                x.ProjectId,
+                x.EventType,
+                x.Version,
+            });
+            e.Property(x => x.ProjectId).HasMaxLength(100);
+            e.Property(x => x.EventType).HasMaxLength(100);
             e.Property(x => x.Definition).HasColumnType("jsonb");
-            e.HasOne<ProjectRecord>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<ProjectRecord>()
+                .WithMany()
+                .HasForeignKey(x => x.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
         model.Entity<CredentialRecord>(e =>
         {
-            e.ToTable("credentials"); e.HasKey(x => x.KeyHash); e.Property(x => x.KeyHash).HasMaxLength(64);
-            e.HasOne<ProjectRecord>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Restrict);
+            e.ToTable("credentials");
+            e.HasKey(x => x.KeyHash);
+            e.Property(x => x.KeyHash).HasMaxLength(64);
+            e.HasOne<ProjectRecord>()
+                .WithMany()
+                .HasForeignKey(x => x.ProjectId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<EventIdentity>(e =>
         {
-            e.ToTable("event_identity"); e.HasKey(x => new { x.ProjectId, x.EventId });
-            e.Property(x => x.PayloadHash).HasMaxLength(64); e.HasIndex(x => x.OccurredAt);
-            e.HasOne<ProjectRecord>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Restrict);
+            e.ToTable("event_identity");
+            e.HasKey(x => new { x.ProjectId, x.EventId });
+            e.Property(x => x.PayloadHash).HasMaxLength(64);
+            e.HasIndex(x => x.OccurredAt);
+            e.HasOne<ProjectRecord>()
+                .WithMany()
+                .HasForeignKey(x => x.ProjectId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
         model.Entity<InboxRecord>(e =>
         {
-            e.ToTable("inbox"); e.HasKey(x => new { x.ProjectId, x.EventId }); e.Property(x => x.Payload).HasColumnType("jsonb");
+            e.ToTable("inbox");
+            e.HasKey(x => new { x.ProjectId, x.EventId });
+            e.Property(x => x.Payload).HasColumnType("jsonb");
             e.HasIndex(x => x.ReceivedAt).HasFilter("processed_at IS NULL");
-            e.HasOne<EventIdentity>().WithOne().HasForeignKey<InboxRecord>(x => new { x.ProjectId, x.EventId }).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<EventIdentity>()
+                .WithOne()
+                .HasForeignKey<InboxRecord>(x => new { x.ProjectId, x.EventId })
+                .OnDelete(DeleteBehavior.Cascade);
         });
         model.Entity<EventRecord>(e =>
         {
-            e.ToTable("events"); e.HasKey(x => new { x.ProjectId, x.EventId });
-            e.Property(x => x.EventType).HasMaxLength(100); e.Property(x => x.UserId).HasMaxLength(200);
-            e.Property(x => x.AnonymousId).HasMaxLength(200); e.Property(x => x.SessionId).HasMaxLength(200);
+            e.ToTable("events");
+            e.HasKey(x => new { x.ProjectId, x.EventId });
+            e.Property(x => x.EventType).HasMaxLength(100);
+            e.Property(x => x.UserId).HasMaxLength(200);
+            e.Property(x => x.AnonymousId).HasMaxLength(200);
+            e.Property(x => x.SessionId).HasMaxLength(200);
             e.Property(x => x.Properties).HasColumnType("jsonb");
-            e.HasIndex(x => new { x.ProjectId, x.OccurredAt, x.EventId });
-            e.HasIndex(x => new { x.ProjectId, x.EventType, x.OccurredAt });
-            e.HasIndex(x => new { x.ProjectId, x.UserId, x.OccurredAt, x.EventId });
+            e.HasIndex(x => new
+            {
+                x.ProjectId,
+                x.OccurredAt,
+                x.EventId,
+            });
+            e.HasIndex(x => new
+            {
+                x.ProjectId,
+                x.EventType,
+                x.OccurredAt,
+            });
+            e.HasIndex(x => new
+            {
+                x.ProjectId,
+                x.UserId,
+                x.OccurredAt,
+                x.EventId,
+            });
             e.HasIndex(x => x.Properties).HasMethod("gin");
-            e.HasOne<EventIdentity>().WithOne().HasForeignKey<EventRecord>(x => new { x.ProjectId, x.EventId }).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<EventIdentity>()
+                .WithOne()
+                .HasForeignKey<EventRecord>(x => new { x.ProjectId, x.EventId })
+                .OnDelete(DeleteBehavior.Cascade);
         });
         model.Entity<ClickHouseProjectionRecord>(e =>
         {
-            e.ToTable("clickhouse_projection"); e.HasKey(x => new { x.ProjectId, x.EventId });
+            e.ToTable("clickhouse_projection");
+            e.HasKey(x => new { x.ProjectId, x.EventId });
             e.HasIndex(x => new { x.CompletedAt, x.CreatedAt });
-            e.HasOne<EventIdentity>().WithOne().HasForeignKey<ClickHouseProjectionRecord>(x => new { x.ProjectId, x.EventId }).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<EventIdentity>()
+                .WithOne()
+                .HasForeignKey<ClickHouseProjectionRecord>(x => new { x.ProjectId, x.EventId })
+                .OnDelete(DeleteBehavior.Cascade);
         });
         model.Entity<BrokerOutboxRecord>(e =>
         {
-            e.ToTable("broker_outbox"); e.HasKey(x => new { x.ProjectId, x.EventId });
-            e.Property(x => x.Payload).HasColumnType("jsonb"); e.Property(x => x.LastError).HasMaxLength(1000);
+            e.ToTable("broker_outbox");
+            e.HasKey(x => new { x.ProjectId, x.EventId });
+            e.Property(x => x.Payload).HasColumnType("jsonb");
+            e.Property(x => x.LastError).HasMaxLength(1000);
             e.Property(x => x.Attempts).HasDefaultValue(0);
-            e.HasIndex(x => new { x.CompletedAt, x.DeadLetteredAt, x.NextAttemptAt, x.CreatedAt });
-            e.HasOne<EventIdentity>().WithOne().HasForeignKey<BrokerOutboxRecord>(x => new { x.ProjectId, x.EventId }).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new
+            {
+                x.CompletedAt,
+                x.DeadLetteredAt,
+                x.NextAttemptAt,
+                x.CreatedAt,
+            });
+            e.HasOne<EventIdentity>()
+                .WithOne()
+                .HasForeignKey<BrokerOutboxRecord>(x => new { x.ProjectId, x.EventId })
+                .OnDelete(DeleteBehavior.Cascade);
         });
-        model.Entity<StorageState>(e => { e.ToTable("storage_state"); e.HasKey(x => x.Id); e.Property(x => x.Id).ValueGeneratedNever(); });
+        model.Entity<StorageState>(e =>
+        {
+            e.ToTable("storage_state");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever();
+        });
         foreach (var entity in model.Model.GetEntityTypes())
-            foreach (var property in entity.GetProperties())
-                property.SetColumnName(string.Concat(property.Name.Select((c, i) => char.IsUpper(c) && i > 0 ? "_" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString())));
+        foreach (var property in entity.GetProperties())
+            property.SetColumnName(
+                string.Concat(
+                    property.Name.Select(
+                        (c, i) =>
+                            char.IsUpper(c) && i > 0
+                                ? "_" + char.ToLowerInvariant(c)
+                                : char.ToLowerInvariant(c).ToString()
+                    )
+                )
+            );
     }
 }
 
 public sealed class TrackingDbContextFactory : IDesignTimeDbContextFactory<TrackingDbContext>
 {
-    public TrackingDbContext CreateDbContext(string[] args) => new(new DbContextOptionsBuilder<TrackingDbContext>()
-        .UseNpgsql(Environment.GetEnvironmentVariable("ConnectionStrings__Tracking")
-            ?? "Host=localhost;Database=event_tracking;Username=event_tracking").Options);
+    public TrackingDbContext CreateDbContext(string[] args) =>
+        new(
+            new DbContextOptionsBuilder<TrackingDbContext>()
+                .UseNpgsql(
+                    Environment.GetEnvironmentVariable("ConnectionStrings__Tracking")
+                        ?? "Host=localhost;Database=event_tracking;Username=event_tracking"
+                )
+                .Options
+        );
 }

@@ -23,7 +23,14 @@ public sealed class ProductAnalyticsFixtureTests
         Assert.Equal(35, retentionResult.ReturnedUsers);
         Assert.True(retentionResult.Complete);
 
-        var revenue = new RevenueTotal("USD", GrossMinor: 5000, RefundMinor: 1500, NetMinor: 3500, Purchases: 2, Refunds: 1);
+        var revenue = new RevenueTotal(
+            "USD",
+            GrossMinor: 5000,
+            RefundMinor: 1500,
+            NetMinor: 3500,
+            Purchases: 2,
+            Refunds: 1
+        );
         Assert.Equal("USD", revenue.Currency);
         Assert.Equal(5000, revenue.GrossMinor);
         Assert.Equal(1500, revenue.RefundMinor);
@@ -43,9 +50,11 @@ public sealed class ProductAnalyticsFixtureTests
 
         string project = "fixture_project";
         // Create project and required tables
-        await db.Execute($"""
+        await db.Execute(
+            $"""
             INSERT INTO projects (id, event_count, stored_bytes) VALUES ('{project}', 0, 0);
-            """);
+            """
+        );
 
         // Fixture dates
         var day1 = new DateTimeOffset(2026, 9, 10, 10, 0, 0, TimeSpan.Zero);
@@ -58,50 +67,101 @@ public sealed class ProductAnalyticsFixtureTests
         // User 2: signup (day1), return view (day2)
         // User 3: signup (day1), purchase $30 (day1), refund $10 (day2)
         // Anonymous User: view (day1) - user_id IS NULL
-        var events = new (Guid Id, string Type, string? User, string? Session, DateTimeOffset Occurred, string Props)[]
+        var events = new (
+            Guid Id,
+            string Type,
+            string? User,
+            string? Session,
+            DateTimeOffset Occurred,
+            string Props
+        )[]
         {
             // User 1
             (Guid.NewGuid(), "signup", "user-1", "sess-1", day1, "{}"),
             (Guid.NewGuid(), "view_item", "user-1", "sess-1", day1.AddMinutes(5), "{}"),
-            (Guid.NewGuid(), "purchase", "user-1", "sess-1", day1.AddMinutes(10), "{\"currency\":\"USD\",\"amountMinor\":\"5000\"}"),
-
+            (
+                Guid.NewGuid(),
+                "purchase",
+                "user-1",
+                "sess-1",
+                day1.AddMinutes(10),
+                "{\"currency\":\"USD\",\"amountMinor\":\"5000\"}"
+            ),
             // User 2
             (Guid.NewGuid(), "signup", "user-2", "sess-2", day1Midnight, "{}"),
             (Guid.NewGuid(), "view_item", "user-2", "sess-3", day2Midnight, "{}"), // Crosses midnight
-
             // User 3
             (Guid.NewGuid(), "signup", "user-3", "sess-4", day1, "{}"),
-            (Guid.NewGuid(), "purchase", "user-3", "sess-4", day1.AddHours(2), "{\"currency\":\"USD\",\"amountMinor\":\"3000\"}"),
-            (Guid.NewGuid(), "refund", "user-3", "sess-5", day2, "{\"currency\":\"USD\",\"amountMinor\":\"1000\"}"),
-
+            (
+                Guid.NewGuid(),
+                "purchase",
+                "user-3",
+                "sess-4",
+                day1.AddHours(2),
+                "{\"currency\":\"USD\",\"amountMinor\":\"3000\"}"
+            ),
+            (
+                Guid.NewGuid(),
+                "refund",
+                "user-3",
+                "sess-5",
+                day2,
+                "{\"currency\":\"USD\",\"amountMinor\":\"1000\"}"
+            ),
             // Anonymous user
-            (Guid.NewGuid(), "view_item", null, "sess-anon", day1, "{}")
+            (Guid.NewGuid(), "view_item", null, "sess-anon", day1, "{}"),
         };
 
         foreach (var ev in events)
         {
-            await db.Execute($"""
+            await db.Execute(
+                $"""
                 INSERT INTO event_identity (project_id, event_id, payload_hash, occurred_at, received_at, stored_bytes)
                 VALUES ('{project}', '{ev.Id}', 'hash_{ev.Id:N}', '{ev.Occurred:O}', '{ev.Occurred:O}', 100);
 
                 INSERT INTO events (project_id, event_id, event_type, schema_version, user_id, anonymous_id, session_id, occurred_at, received_at, properties)
-                VALUES ('{project}', '{ev.Id}', '{ev.Type}', 1, {(ev.User == null ? "NULL" : $"'{ev.User}'")}, NULL, {(ev.Session == null ? "NULL" : $"'{ev.Session}'")}, '{ev.Occurred:O}', '{ev.Occurred:O}', '{ev.Props}'::jsonb);
-                """);
+                VALUES ('{project}', '{ev.Id}', '{ev.Type}', 1, {(
+                    ev.User == null ? "NULL" : $"'{ev.User}'"
+                )}, NULL, {(
+                    ev.Session == null ? "NULL" : $"'{ev.Session}'"
+                )}, '{ev.Occurred:O}', '{ev.Occurred:O}', '{ev.Props}'::jsonb);
+                """
+            );
         }
 
         var from = new DateTimeOffset(2026, 9, 10, 0, 0, 0, TimeSpan.Zero);
         var to = new DateTimeOffset(2026, 9, 12, 0, 0, 0, TimeSpan.Zero);
 
         // 1. Funnel Verification: signup -> view_item -> purchase
-        var funnelSteps = new[] { new FunnelStep("signup"), new FunnelStep("view_item"), new FunnelStep("purchase") };
-        var funnel = await analytics.FunnelAsync(project, from, to, TimeSpan.FromDays(2), funnelSteps, default);
+        var funnelSteps = new[]
+        {
+            new FunnelStep("signup"),
+            new FunnelStep("view_item"),
+            new FunnelStep("purchase"),
+        };
+        var funnel = await analytics.FunnelAsync(
+            project,
+            from,
+            to,
+            TimeSpan.FromDays(2),
+            funnelSteps,
+            default
+        );
         Assert.Equal(3, funnel.Count);
         Assert.Equal(3, funnel[0].Users); // user-1, user-2, user-3
         Assert.Equal(2, funnel[1].Users); // user-1, user-2
         Assert.Equal(1, funnel[2].Users); // user-1
 
         // 2. Retention Verification: signup -> view_item
-        var retention = await analytics.RetentionAsync(project, new DateOnly(2026, 9, 10), new DateOnly(2026, 9, 12), "signup", "view_item", to, default);
+        var retention = await analytics.RetentionAsync(
+            project,
+            new DateOnly(2026, 9, 10),
+            new DateOnly(2026, 9, 12),
+            "signup",
+            "view_item",
+            to,
+            default
+        );
         Assert.NotEmpty(retention);
         var day1Cohort = retention.Where(r => r.CohortDate == new DateOnly(2026, 9, 10)).ToList();
         Assert.Contains(day1Cohort, r => r.Day == 0 && r.CohortUsers == 3 && r.ReturnedUsers == 1); // user-1 returned same day
@@ -135,7 +195,9 @@ public sealed class ProductAnalyticsFixtureTests
         var analytics = new ProductAnalytics(source);
         var query = new PostgresAnalytics(source);
         string project = "edge_fixture";
-        await db.Execute($"INSERT INTO projects (id, event_count, stored_bytes) VALUES ('{project}', 0, 0);");
+        await db.Execute(
+            $"INSERT INTO projects (id, event_count, stored_bytes) VALUES ('{project}', 0, 0);"
+        );
 
         var day1 = new DateTimeOffset(2026, 9, 10, 10, 0, 0, TimeSpan.Zero);
         var tie = new DateTimeOffset(2026, 9, 10, 10, 0, 0, TimeSpan.Zero);
@@ -149,7 +211,15 @@ public sealed class ProductAnalyticsFixtureTests
         var tieA = Guid.Parse("00000000-0000-0000-0000-000000000001");
         var tieB = Guid.Parse("00000000-0000-0000-0000-000000000002");
         var lateId = Guid.NewGuid();
-        var events = new (Guid Id, string Type, string? User, string? Session, DateTimeOffset Occurred, DateTimeOffset Received, string Props)[]
+        var events = new (
+            Guid Id,
+            string Type,
+            string? User,
+            string? Session,
+            DateTimeOffset Occurred,
+            DateTimeOffset Received,
+            string Props
+        )[]
         {
             (dupId, "signup", "dup-user", "sess-dup", day1, day1, "{}"),
             (tieA, "view_item", "tie-user", "sess-tie", tie, tie, "{}"),
@@ -158,32 +228,54 @@ public sealed class ProductAnalyticsFixtureTests
         };
         foreach (var ev in events)
         {
-            await db.Execute($"""
+            await db.Execute(
+                $"""
                 INSERT INTO event_identity (project_id, event_id, payload_hash, occurred_at, received_at, stored_bytes)
                 VALUES ('{project}', '{ev.Id}', 'edge_{ev.Id:N}', '{ev.Occurred:O}', '{ev.Received:O}', 100)
                 ON CONFLICT (project_id, event_id) DO NOTHING;
                 INSERT INTO events (project_id, event_id, event_type, schema_version, user_id, anonymous_id, session_id, occurred_at, received_at, properties)
                 VALUES ('{project}', '{ev.Id}', '{ev.Type}', 1, '{ev.User}', NULL, '{ev.Session}', '{ev.Occurred:O}', '{ev.Received:O}', '{ev.Props}'::jsonb)
                 ON CONFLICT (project_id, event_id) DO NOTHING;
-                """);
+                """
+            );
         }
         // Second commit of the same repeated ID must not create a second row.
-        await db.Execute($$"""
+        await db.Execute(
+            $$"""
             INSERT INTO events (project_id, event_id, event_type, schema_version, user_id, anonymous_id, session_id, occurred_at, received_at, properties)
             VALUES ('{{project}}', '{{dupId}}', 'signup', 1, 'dup-user', NULL, 'sess-dup', '{{day1:O}}', '{{day1:O}}', '{}'::jsonb)
             ON CONFLICT (project_id, event_id) DO NOTHING;
-            """);
+            """
+        );
 
-        Assert.Equal(4, await db.Scalar($"SELECT count(*) FROM events WHERE project_id='{project}'"));
+        Assert.Equal(
+            4,
+            await db.Scalar($"SELECT count(*) FROM events WHERE project_id='{project}'")
+        );
 
         // Late event is attributed to its occurredAt day, not the received day.
-        var summary = await query.SummaryAsync(project,
-            new AnalyticsFilter(day1.AddDays(-2), day1.AddDays(2), "signup", null, null, null), default);
+        var summary = await query.SummaryAsync(
+            project,
+            new AnalyticsFilter(day1.AddDays(-2), day1.AddDays(2), "signup", null, null, null),
+            default
+        );
         Assert.Contains(summary, s => s.EventType == "signup");
 
         // Timeline ordering is stable for equal timestamps (event_id tiebreak).
-        var timeline = await query.TimelineAsync(project,
-            new AnalyticsFilter(day1.AddDays(-1), day1.AddDays(1), "view_item", "tie-user", null, null), 50, null, default);
+        var timeline = await query.TimelineAsync(
+            project,
+            new AnalyticsFilter(
+                day1.AddDays(-1),
+                day1.AddDays(1),
+                "view_item",
+                "tie-user",
+                null,
+                null
+            ),
+            50,
+            null,
+            default
+        );
         Assert.Equal(2, timeline.Events.Count);
         Assert.True(tieA.CompareTo(tieB) < 0);
         Assert.Equal(tieA, timeline.Events[0].EventId);
@@ -191,18 +283,34 @@ public sealed class ProductAnalyticsFixtureTests
 
         // Anonymous events never enter funnels/retention cohorts.
         var anonId = Guid.NewGuid();
-        await db.Execute($$"""
+        await db.Execute(
+            $$"""
             INSERT INTO event_identity (project_id, event_id, payload_hash, occurred_at, received_at, stored_bytes)
             VALUES ('{{project}}', '{{anonId}}', 'edge_anon', '{{day1:O}}', '{{day1:O}}', 100);
             INSERT INTO events (project_id, event_id, event_type, schema_version, user_id, anonymous_id, session_id, occurred_at, received_at, properties)
             VALUES ('{{project}}', '{{anonId}}', 'signup', 1, NULL, 'anon-1', 'sess-anon', '{{day1:O}}', '{{day1:O}}', '{}'::jsonb);
-            """);
-        var funnel = await analytics.FunnelAsync(project, day1.AddDays(-1), day1.AddDays(1),
-            TimeSpan.FromDays(2), [new FunnelStep("signup")], default);
+            """
+        );
+        var funnel = await analytics.FunnelAsync(
+            project,
+            day1.AddDays(-1),
+            day1.AddDays(1),
+            TimeSpan.FromDays(2),
+            [new FunnelStep("signup")],
+            default
+        );
         Assert.DoesNotContain(funnel, f => f.Users < 0);
 
         // A cohort starting today is explicitly incomplete.
-        var retention = await analytics.RetentionAsync(project, today, today.AddDays(1), "signup", "view_item", DateTimeOffset.UtcNow, default);
+        var retention = await analytics.RetentionAsync(
+            project,
+            today,
+            today.AddDays(1),
+            "signup",
+            "view_item",
+            DateTimeOffset.UtcNow,
+            default
+        );
         Assert.All(retention.Where(r => r.CohortDate == today), r => Assert.False(r.Complete));
     }
 }
