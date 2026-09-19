@@ -69,8 +69,9 @@ public sealed class TelemetryTests : IClassFixture<PrototypeFactory>
         using var listener = new System.Diagnostics.ActivityListener
         {
             ShouldListenTo = source => source.Name == EventTrackingTelemetry.MeterName,
-            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) =>
-                System.Diagnostics.ActivitySamplingResult.AllData,
+            Sample = (
+                ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _
+            ) => System.Diagnostics.ActivitySamplingResult.AllData,
         };
         System.Diagnostics.ActivitySource.AddActivityListener(listener);
         using var activity = EventTrackingTelemetry.Activity.StartActivity("test.accept");

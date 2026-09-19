@@ -5,7 +5,12 @@ namespace EventTracking.Api.Services;
 public interface IEventStore
 {
     void Add(TrackedEvent trackedEvent);
-    IReadOnlyCollection<EventSummary> GetSummary(string projectId, DateTimeOffset? from, DateTimeOffset? to, string? userId);
+    IReadOnlyCollection<EventSummary> GetSummary(
+        string projectId,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        string? userId
+    );
     IReadOnlyCollection<TrackedEvent> GetRecent(string sessionId);
 }
 
@@ -20,7 +25,8 @@ public sealed class InMemoryEventStore : IEventStore
     {
         lock (_lock)
         {
-            if (_events.Count >= MaxEvents) _events.RemoveRange(0, _events.Count - MaxEvents + 1);
+            if (_events.Count >= MaxEvents)
+                _events.RemoveRange(0, _events.Count - MaxEvents + 1);
             _events.Add(trackedEvent);
         }
     }
@@ -29,12 +35,20 @@ public sealed class InMemoryEventStore : IEventStore
     {
         lock (_lock)
         {
-            return _events.Where(item => item.ProjectId == "demo-shop" && item.SessionId == sessionId)
-                .TakeLast(50).Reverse().ToArray();
+            return _events
+                .Where(item => item.ProjectId == "demo-shop" && item.SessionId == sessionId)
+                .TakeLast(50)
+                .Reverse()
+                .ToArray();
         }
     }
 
-    public IReadOnlyCollection<EventSummary> GetSummary(string projectId, DateTimeOffset? from, DateTimeOffset? to, string? userId)
+    public IReadOnlyCollection<EventSummary> GetSummary(
+        string projectId,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        string? userId
+    )
     {
         lock (_lock)
         {

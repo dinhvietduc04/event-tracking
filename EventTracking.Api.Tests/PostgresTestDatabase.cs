@@ -10,7 +10,8 @@ public sealed class PostgresFactAttribute : FactAttribute
     public PostgresFactAttribute()
     {
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION")))
-            Skip = "Set TEST_POSTGRES_CONNECTION to a local PostgreSQL admin connection. CI requires these real-service tests.";
+            Skip =
+                "Set TEST_POSTGRES_CONNECTION to a local PostgreSQL admin connection. CI requires these real-service tests.";
     }
 }
 
@@ -27,26 +28,41 @@ internal sealed class PostgresTestDatabase : IAsyncDisposable
         await using var connection = new NpgsqlConnection(database._admin);
         await connection.OpenAsync();
         // Identifier is generated above, never supplied by a caller.
-        await using var command = new NpgsqlCommand($"CREATE DATABASE \"{database.Name}\"", connection);
+        await using var command = new NpgsqlCommand(
+            $"CREATE DATABASE \"{database.Name}\"",
+            connection
+        );
         await command.ExecuteNonQueryAsync();
         database.ConnectionString = new NpgsqlConnectionStringBuilder(database._admin)
-        { Database = database.Name, Timeout = 3, CommandTimeout = 5 }.ConnectionString;
+        {
+            Database = database.Name,
+            Timeout = 3,
+            CommandTimeout = 5,
+        }.ConnectionString;
         return database;
     }
 
-    public WebApplicationFactory<Program> App(string profile = "Distributed", bool seed = true,
-        Dictionary<string, string?>? settings = null) => new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-    {
-        if (seed) TestProjects.Configure(builder);
-        // Exercise non-development HTTP defaults without requiring production TLS/role secrets.
-        // ProductionSecurityTests cover the strict deployment configuration separately.
-        else builder.UseEnvironment("Testing");
-        builder.UseSetting("Storage:Profile", profile);
-        builder.UseSetting("Storage:MigrateOnStartup", "true");
-        builder.UseSetting("ConnectionStrings:Tracking", ConnectionString);
-        builder.UseSetting("Logging:LogLevel:Default", "Warning");
-        if (settings is not null) foreach (var setting in settings) builder.UseSetting(setting.Key, setting.Value);
-    });
+    public WebApplicationFactory<Program> App(
+        string profile = "Distributed",
+        bool seed = true,
+        Dictionary<string, string?>? settings = null
+    ) =>
+        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            if (seed)
+                TestProjects.Configure(builder);
+            // Exercise non-development HTTP defaults without requiring production TLS/role secrets.
+            // ProductionSecurityTests cover the strict deployment configuration separately.
+            else
+                builder.UseEnvironment("Testing");
+            builder.UseSetting("Storage:Profile", profile);
+            builder.UseSetting("Storage:MigrateOnStartup", "true");
+            builder.UseSetting("ConnectionStrings:Tracking", ConnectionString);
+            builder.UseSetting("Logging:LogLevel:Default", "Warning");
+            if (settings is not null)
+                foreach (var setting in settings)
+                    builder.UseSetting(setting.Key, setting.Value);
+        });
 
     public async Task<long> Scalar(string sql)
     {
@@ -68,7 +84,10 @@ internal sealed class PostgresTestDatabase : IAsyncDisposable
     {
         await using var connection = new NpgsqlConnection(_admin);
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand($"DROP DATABASE \"{Name}\" WITH (FORCE)", connection);
+        await using var command = new NpgsqlCommand(
+            $"DROP DATABASE \"{Name}\" WITH (FORCE)",
+            connection
+        );
         await command.ExecuteNonQueryAsync();
     }
 }

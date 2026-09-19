@@ -25,10 +25,13 @@ public sealed class EventTrackingTests : IClassFixture<PrototypeFactory>
         await client.PostAsJsonAsync("/events", new TrackEventRequest("page_view", "user-2", now));
         await client.PostAsJsonAsync("/events", new TrackEventRequest("login", "user-1", now));
 
-        IReadOnlyList<EventSummary>? summary = await Eventually(async () =>
-            await client.GetFromJsonAsync<IReadOnlyList<EventSummary>>("/analytics/events"),
-            items => items.Any(item => item.EventType == "page_view" && item.Count == 2)
-                && items.Any(item => item.EventType == "login" && item.Count == 1));
+        IReadOnlyList<EventSummary>? summary = await Eventually(
+            async () =>
+                await client.GetFromJsonAsync<IReadOnlyList<EventSummary>>("/analytics/events"),
+            items =>
+                items.Any(item => item.EventType == "page_view" && item.Count == 2)
+                && items.Any(item => item.EventType == "login" && item.Count == 1)
+        );
 
         Assert.NotNull(summary);
         Assert.Contains(summary!, item => item.EventType == "page_view" && item.Count == 2);
@@ -45,9 +48,13 @@ public sealed class EventTrackingTests : IClassFixture<PrototypeFactory>
         await client.PostAsJsonAsync("/events", new TrackEventRequest("purchase", "user-a", now));
         await client.PostAsJsonAsync("/events", new TrackEventRequest("purchase", "user-b", now));
 
-        IReadOnlyList<EventSummary>? summary = await Eventually(async () =>
-            await client.GetFromJsonAsync<IReadOnlyList<EventSummary>>("/analytics/users/user-a"),
-            items => items.Any(item => item.EventType == "purchase" && item.Count == 1));
+        IReadOnlyList<EventSummary>? summary = await Eventually(
+            async () =>
+                await client.GetFromJsonAsync<IReadOnlyList<EventSummary>>(
+                    "/analytics/users/user-a"
+                ),
+            items => items.Any(item => item.EventType == "purchase" && item.Count == 1)
+        );
 
         Assert.NotNull(summary);
         Assert.Contains(summary!, item => item.EventType == "purchase" && item.Count == 1);
@@ -74,8 +81,15 @@ public sealed class EventTrackingTests : IClassFixture<PrototypeFactory>
     {
         var store = new EventTracking.Api.Services.InMemoryEventStore();
         for (int i = 0; i < 10_050; i++)
-            store.Add(new EventTracking.Api.Models.TrackedEvent(Guid.NewGuid(), "t", null,
-                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+            store.Add(
+                new EventTracking.Api.Models.TrackedEvent(
+                    Guid.NewGuid(),
+                    "t",
+                    null,
+                    DateTimeOffset.UtcNow,
+                    DateTimeOffset.UtcNow
+                )
+            );
         // Bounded retention: newest 50-session query still works and the store cannot grow without limit.
         Assert.Empty(store.GetRecent("no-such-session"));
     }
@@ -86,14 +100,20 @@ public sealed class EventTrackingTests : IClassFixture<PrototypeFactory>
         using var app = _factory.WithWebHostBuilder(TestProjects.Configure);
         using HttpClient client = app.CreateClient().WithKey(TestProjects.BothA);
 
-        HttpResponseMessage response = await client.PostAsJsonAsync("/events", new TrackEventRequest("", "user", DateTimeOffset.UtcNow));
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/events",
+            new TrackEventRequest("", "user", DateTimeOffset.UtcNow)
+        );
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     private static async Task<IReadOnlyList<EventSummary>?> Eventually(
-        Func<Task<IReadOnlyList<EventSummary>?>> read, Func<IReadOnlyList<EventSummary>, bool> complete,
-        int retries = 20, int delayMs = 50)
+        Func<Task<IReadOnlyList<EventSummary>?>> read,
+        Func<IReadOnlyList<EventSummary>, bool> complete,
+        int retries = 20,
+        int delayMs = 50
+    )
     {
         for (int i = 0; i < retries; i++)
         {
@@ -109,6 +129,11 @@ public sealed class EventTrackingTests : IClassFixture<PrototypeFactory>
         return await read();
     }
 
-    private sealed record TrackEventRequest(string EventType, string? UserId, DateTimeOffset? OccurredAt);
+    private sealed record TrackEventRequest(
+        string EventType,
+        string? UserId,
+        DateTimeOffset? OccurredAt
+    );
+
     private sealed record EventSummary(string EventType, int Count);
 }
