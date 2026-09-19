@@ -4,7 +4,7 @@ using Npgsql;
 
 namespace EventTracking.Worker;
 
-public sealed class PostgresWorker(PostgresStore store, StorageOptions options,
+public sealed class PostgresWorker(PostgresStore store, ClickHouseProjector clickHouse, ClickHouseOptions clickHouseOptions, StorageOptions options,
     IDbContextFactory<TrackingDbContext> factory, NpgsqlDataSource source, ILogger<PostgresWorker> logger, IHostEnvironment environment) : BackgroundService
 {
     public override async Task StartAsync(CancellationToken cancellationToken)
@@ -21,6 +21,7 @@ public sealed class PostgresWorker(PostgresStore store, StorageOptions options,
         await using var state = DatabaseSql.Command(connection, null, "SELECT profile FROM storage_state WHERE id=1");
         if ((string?)await state.ExecuteScalarAsync(cancellationToken) != "Distributed")
             throw new InvalidOperationException("The worker requires a database initialized with the Distributed profile.");
+        if (clickHouseOptions.Enabled) await clickHouse.EnsureSchemaAsync(cancellationToken);
         await base.StartAsync(cancellationToken);
     }
 
@@ -30,7 +31,9 @@ public sealed class PostgresWorker(PostgresStore store, StorageOptions options,
         {
             try
             {
-                if (await store.ProcessBatchAsync(stoppingToken) > 0) continue;
+                int projected = await store.ProcessBatchAsync(stoppingToken);
+                int mirrored = await clickHouse.ProcessBatchAsync(stoppingToken);
+                if (projected > 0 || mirrored > 0) continue;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception error) when (error is NpgsqlException or TimeoutException)

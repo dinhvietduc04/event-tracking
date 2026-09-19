@@ -27,3 +27,20 @@ public sealed class StorageOptions
             throw new InvalidOperationException("Invalid storage profile, limits, or retention (event retention must exceed allowed lateness; identity retention must cover event retention).");
     }
 }
+
+public sealed class ClickHouseOptions
+{
+    public bool Enabled { get; set; }
+    public string Url { get; set; } = "http://localhost:8123";
+    public string Database { get; set; } = "event_tracking";
+    public string Username { get; set; } = "default";
+    public string? Password { get; set; }
+
+    public void Validate()
+    {
+        if (!Enabled) return;
+        if (!Uri.TryCreate(Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")
+            || string.IsNullOrWhiteSpace(Database) || Database.Any(c => !char.IsLetterOrDigit(c) && c != '_'))
+            throw new InvalidOperationException("ClickHouse requires an absolute HTTP(S) URL and a simple database name.");
+    }
+}

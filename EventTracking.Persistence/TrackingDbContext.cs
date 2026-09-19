@@ -53,6 +53,14 @@ public sealed class EventRecord
     public string Properties { get; set; } = "{}";
 }
 
+public sealed class ClickHouseProjectionRecord
+{
+    public string ProjectId { get; set; } = "";
+    public Guid EventId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+}
+
 public sealed class StorageState
 {
     public int Id { get; set; }
@@ -122,6 +130,7 @@ public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> option
     public DbSet<EventIdentity> Identities => Set<EventIdentity>();
     public DbSet<InboxRecord> Inbox => Set<InboxRecord>();
     public DbSet<EventRecord> Events => Set<EventRecord>();
+    public DbSet<ClickHouseProjectionRecord> ClickHouseProjection => Set<ClickHouseProjectionRecord>();
     public DbSet<StorageState> State => Set<StorageState>();
     public DbSet<SavedQueryView> SavedViews => Set<SavedQueryView>();
     public DbSet<EventSchemaRecord> EventSchemas => Set<EventSchemaRecord>();
@@ -199,6 +208,12 @@ public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> option
             e.HasIndex(x => new { x.ProjectId, x.UserId, x.OccurredAt, x.EventId });
             e.HasIndex(x => x.Properties).HasMethod("gin");
             e.HasOne<EventIdentity>().WithOne().HasForeignKey<EventRecord>(x => new { x.ProjectId, x.EventId }).OnDelete(DeleteBehavior.Cascade);
+        });
+        model.Entity<ClickHouseProjectionRecord>(e =>
+        {
+            e.ToTable("clickhouse_projection"); e.HasKey(x => new { x.ProjectId, x.EventId });
+            e.HasIndex(x => new { x.CompletedAt, x.CreatedAt });
+            e.HasOne<EventIdentity>().WithOne().HasForeignKey<ClickHouseProjectionRecord>(x => new { x.ProjectId, x.EventId }).OnDelete(DeleteBehavior.Cascade);
         });
         model.Entity<StorageState>(e => { e.ToTable("storage_state"); e.HasKey(x => x.Id); e.Property(x => x.Id).ValueGeneratedNever(); });
         foreach (var entity in model.Model.GetEntityTypes())

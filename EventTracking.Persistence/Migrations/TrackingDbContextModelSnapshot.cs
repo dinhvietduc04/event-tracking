@@ -68,6 +68,31 @@ namespace EventTracking.Persistence.Migrations
                     b.ToTable("audit_records", (string)null);
                 });
 
+            modelBuilder.Entity("EventTracking.Persistence.ClickHouseProjectionRecord", b =>
+                {
+                    b.Property<string>("ProjectId")
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("project_id");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("ProjectId", "EventId");
+
+                    b.HasIndex("CompletedAt", "CreatedAt");
+
+                    b.ToTable("clickhouse_projection", (string)null);
+                });
+
             modelBuilder.Entity("EventTracking.Persistence.CredentialRecord", b =>
                 {
                     b.Property<string>("KeyHash")
@@ -448,6 +473,15 @@ namespace EventTracking.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("data_protection_keys", (string)null);
+                });
+
+            modelBuilder.Entity("EventTracking.Persistence.ClickHouseProjectionRecord", b =>
+                {
+                    b.HasOne("EventTracking.Persistence.EventIdentity", null)
+                        .WithOne()
+                        .HasForeignKey("EventTracking.Persistence.ClickHouseProjectionRecord", "ProjectId", "EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("EventTracking.Persistence.CredentialRecord", b =>

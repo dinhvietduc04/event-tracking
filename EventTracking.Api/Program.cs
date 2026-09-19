@@ -22,9 +22,13 @@ bool operatorMode = args.Any(operations.Contains);
 bool strict = ProductionSecurity.Required(builder.Environment.EnvironmentName);
 var storage = builder.Configuration.GetSection("Storage").Get<StorageOptions>() ?? new();
 storage.Validate(builder.Configuration);
+var clickHouse = builder.Configuration.GetSection("ClickHouse").Get<ClickHouseOptions>() ?? new();
+clickHouse.Validate();
 ProductionSecurity.Validate(builder.Configuration, storage, strict, operatorMode, api: true);
 if (operatorMode && !storage.Durable) throw new InvalidOperationException("Database operator commands require a durable profile.");
 builder.Services.AddSingleton(storage);
+builder.Services.AddSingleton(clickHouse);
+builder.Services.AddHttpClient(nameof(ClickHouseProjector), client => client.Timeout = TimeSpan.FromSeconds(30));
 bool dashboard = storage.Durable && builder.Configuration.GetValue("Dashboard:Enabled", builder.Environment.IsDevelopment());
 DashboardAccess.Configure(builder.Services, builder.Environment.IsDevelopment());
 if (builder.Configuration.GetValue<bool>("ReverseProxy:TrustForwardedProto"))
@@ -89,6 +93,7 @@ if (storage.Durable)
     builder.Services.AddSingleton(_ => certificates);
     builder.Services.AddSingleton<IProjectKeys, PostgresKeys>();
     builder.Services.AddSingleton<PostgresStore>();
+    builder.Services.AddSingleton<ClickHouseProjector>();
     builder.Services.AddSingleton<PostgresAnalytics>();
     builder.Services.AddSingleton<ProductAnalytics>();
     builder.Services.AddSingleton<DashboardAccounts>();

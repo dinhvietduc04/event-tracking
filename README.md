@@ -4,6 +4,8 @@ A distributed-style analytics platform for ingesting, processing, and aggregatin
 
 Durable event ingestion and project-scoped analytics, with a React dashboard, account login, event explorer, user timelines, and an instrumented demo shop. Milestone 4's local MVP is implemented on the current PostgreSQL profiles; the [project plan](docs/PROJECT_PLAN.md) tracks the unfinished RabbitMQ work in milestone 3 and production work in milestone 5.
 
+Milestone 7 includes an opt-in local ClickHouse projection evaluation. PostgreSQL remains canonical and serves all reads; see the [ClickHouse evaluation guide](docs/MILESTONE_7.md) before enabling it.
+
 Milestone 5 is underway: [M5-01 adds project administration and audited account recovery](docs/MILESTONE_5.md), and [M5-02 adds production configuration, restricted database roles, verified TLS, encrypted cookie keys and shared login limits](docs/PRODUCTION_SECURITY.md). Apply migrations before upgrading; existing M5-01 memberships require an explicit operator grant for admin access. Production release work remains in progress.
 
 To migrate the local database, run `.\migrate-db.cmd` (PowerShell 7 and .NET 10 required), or `./scripts/Migrate-Database.ps1`. Use `-Profile Hosted` for an already Hosted local database. For a remote database, supply the private operator connection and explicit target as described in the [migration guide](docs/PRODUCTION_SECURITY.md#migrate-the-database).

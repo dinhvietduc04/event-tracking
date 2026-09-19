@@ -50,6 +50,9 @@ services:
       DOTNET_ENVIRONMENT: Development
       ConnectionStrings__Tracking: "${ConnectionStrings__Tracking:-Host=postgres;Database=event_tracking;Username=event_tracking;Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable}"
       Storage__Profile: ${STORAGE_PROFILE:-Distributed}
+      ClickHouse__Enabled: ${CLICKHOUSE_ENABLED:-false}
+      ClickHouse__Url: http://clickhouse:8123
+      ClickHouse__Database: event_tracking
     restart: on-failure:5
     stop_grace_period: 35s
     depends_on:
@@ -57,5 +60,16 @@ services:
         condition: service_healthy
       api:
         condition: service_started
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8-alpine
+    profiles: ["clickhouse"]
+    environment:
+      CLICKHOUSE_DB: event_tracking
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "127.0.0.1:${CLICKHOUSE_PORT:-8123}:8123"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
 volumes:
   postgres-data:
+  clickhouse-data:

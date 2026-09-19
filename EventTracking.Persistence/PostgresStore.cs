@@ -19,8 +19,11 @@ public static class DatabaseSql
     }
 }
 
-public sealed class PostgresStore(NpgsqlDataSource source, StorageOptions options, ILogger<PostgresStore> logger)
+public sealed class PostgresStore(NpgsqlDataSource source, StorageOptions options, ClickHouseOptions clickHouse, ILogger<PostgresStore> logger)
 {
+    public PostgresStore(NpgsqlDataSource source, StorageOptions options, ILogger<PostgresStore> logger)
+        : this(source, options, new ClickHouseOptions(), logger) { }
+
     public async Task<IReadOnlyList<EventAcceptance>> AcceptAsync(string projectId, IReadOnlyList<V1EventRequest> requests, CancellationToken ct)
     {
         var events = requests.Select(CanonicalEvent.Create).ToArray();
@@ -89,6 +92,7 @@ public sealed class PostgresStore(NpgsqlDataSource source, StorageOptions option
                         projectId, item.Event.EventId, item.Payload, receivedAt);
                     await inbox.ExecuteNonQueryAsync(ct);
                 }
+                if (clickHouse.Enabled) await EnqueueClickHouseProjection(connection, transaction, projectId, item.Event.EventId, ct);
             }
             await using var update = DatabaseSql.Command(connection, transaction,
                 "UPDATE projects SET event_count = event_count + $2, stored_bytes = stored_bytes + $3 WHERE id = $1", projectId, addedCount, addedBytes);
@@ -112,6 +116,15 @@ public sealed class PostgresStore(NpgsqlDataSource source, StorageOptions option
         await command.ExecuteNonQueryAsync(ct);
     }
 
+    internal static async Task EnqueueClickHouseProjection(NpgsqlConnection connection, NpgsqlTransaction transaction,
+        string projectId, Guid eventId, CancellationToken ct)
+    {
+        await using var command = DatabaseSql.Command(connection, transaction,
+            "INSERT INTO clickhouse_projection (project_id,event_id,created_at) VALUES ($1,$2,now()) ON CONFLICT (project_id,event_id) DO NOTHING",
+            projectId, eventId);
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
     public async Task<int> ProcessBatchAsync(CancellationToken ct)
     {
         await using var connection = await source.OpenConnectionAsync(ct);
@@ -128,6 +141,7 @@ public sealed class PostgresStore(NpgsqlDataSource source, StorageOptions option
         foreach (var item in batch)
         {
             await InsertEvent(connection, transaction, item.Project, item.Event, item.ReceivedAt, ct);
+            if (clickHouse.Enabled) await EnqueueClickHouseProjection(connection, transaction, item.Project, item.Event.EventId, ct);
             await using var complete = DatabaseSql.Command(connection, transaction,
                 "UPDATE inbox SET processed_at = now() WHERE project_id = $1 AND event_id = $2", item.Project, item.Event.EventId);
             await complete.ExecuteNonQueryAsync(ct);
