@@ -1,14 +1,12 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace EventTracking.Persistence.Migrations
 {
-    /// <inheritdoc />
     public partial class ClickHouseProjection : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
@@ -30,18 +28,13 @@ namespace EventTracking.Persistence.Migrations
                         principalColumns: new[] { "project_id", "event_id" },
                         onDelete: ReferentialAction.Cascade);
                 });
-
             migrationBuilder.CreateIndex(
                 name: "IX_clickhouse_projection_completed_at_created_at",
                 table: "clickhouse_projection",
                 columns: new[] { "completed_at", "created_at" });
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.DropTable(
-                name: "clickhouse_projection");
-        }
+            => migrationBuilder.DropTable(name: "clickhouse_projection");
     }
 }

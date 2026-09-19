@@ -1,6 +1,8 @@
 using EventTracking.Persistence;
 using System.Threading.RateLimiting;
 using EventTracking.Api;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 using EventTracking.Api.Access;
 using EventTracking.Api.Demo;
 using EventTracking.Api.Services;
@@ -13,7 +15,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.DataProtection;
 
-string[] operations = ["--migrate", "--provision", "--retain", "--revoke", "--storage-info", "--dashboard-provision", "--dashboard-admin", "--grant-runtime", "--protect-keys"];
+string[] operations = ["--migrate", "--provision", "--retain", "--revoke", "--storage-info", "--dashboard-provision", "--dashboard-admin", "--grant-runtime", "--protect-keys", "--delete-subject", "--backfill-clickhouse", "--reconcile-clickhouse"];
 foreach (string exclusive in new[] { "--dashboard-admin", "--grant-runtime", "--protect-keys" })
     if (args.Contains(exclusive) && args.Any(arg => operations.Contains(arg) && arg != exclusive && arg != "--migrate"))
         throw new InvalidOperationException($"Run {exclusive} separately from other operator actions (it may be combined with --migrate).");
@@ -24,10 +26,13 @@ var storage = builder.Configuration.GetSection("Storage").Get<StorageOptions>() 
 storage.Validate(builder.Configuration);
 var clickHouse = builder.Configuration.GetSection("ClickHouse").Get<ClickHouseOptions>() ?? new();
 clickHouse.Validate();
+var rabbitMq = builder.Configuration.GetSection("RabbitMq").Get<RabbitMqOptions>() ?? new();
+rabbitMq.Validate();
 ProductionSecurity.Validate(builder.Configuration, storage, strict, operatorMode, api: true);
 if (operatorMode && !storage.Durable) throw new InvalidOperationException("Database operator commands require a durable profile.");
 builder.Services.AddSingleton(storage);
 builder.Services.AddSingleton(clickHouse);
+builder.Services.AddSingleton(rabbitMq);
 builder.Services.AddHttpClient(nameof(ClickHouseProjector), client => client.Timeout = TimeSpan.FromSeconds(30));
 bool dashboard = storage.Durable && builder.Configuration.GetValue("Dashboard:Enabled", builder.Environment.IsDevelopment());
 DashboardAccess.Configure(builder.Services, builder.Environment.IsDevelopment());
@@ -121,6 +126,15 @@ builder.Services.AddRateLimiter(options =>
         {
             PermitLimit = permits, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
         }));
+    // Analytical queries fan out over large row windows; throttle separately from ingestion
+    // so dashboards cannot starve event acceptance (or vice versa).
+    int analyticsPermits = builder.Configuration.GetValue("Ingestion:AnalyticsRequestsPerMinute", 120);
+    if (analyticsPermits < 1) throw new InvalidOperationException("Ingestion:AnalyticsRequestsPerMinute must be positive.");
+    options.AddPolicy("analytics", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Project().ProjectId, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = analyticsPermits, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+        }));
     options.OnRejected = async (rejection, cancellationToken) =>
     {
         rejection.HttpContext.Response.Headers.RetryAfter = "60";
@@ -128,6 +142,23 @@ builder.Services.AddRateLimiter(options =>
             .ExecuteAsync(rejection.HttpContext);
     };
 });
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics =>
+    {
+        metrics.AddMeter(EventTrackingTelemetry.MeterName)
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation();
+        if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+            metrics.AddOtlpExporter();
+    })
+    .WithTracing(tracing =>
+    {
+        tracing.AddSource(EventTrackingTelemetry.MeterName)
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation();
+        if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+            tracing.AddOtlpExporter();
+    });
 
 var app = builder.Build();
 if (storage.Profile == "Distributed" && builder.Configuration["Storage:WorkerEnabled"] is not null)
@@ -201,6 +232,29 @@ if (storage.Durable)
         app.Logger.LogInformation("Dashboard administration completed; audit record committed.");
         return;
     }
+    if (args.Contains("--delete-subject"))
+    {
+        string projectId = app.Configuration["Administration:ProjectId"] ?? throw new InvalidOperationException("Set Administration:ProjectId to delete subject data.");
+        string userId = app.Configuration["Administration:UserId"] ?? throw new InvalidOperationException("Set Administration:UserId to delete subject data.");
+        int deleted = await app.Services.GetRequiredService<PostgresStore>().DeleteSubjectAsync(projectId, userId, default);
+        app.Logger.LogInformation("Deleted {Count} events for a subject in project {ProjectId}", deleted, projectId);
+        return;
+    }
+    if (args.Contains("--backfill-clickhouse"))
+    {
+        var from = DateTimeOffset.Parse(app.Configuration["Administration:From"] ?? throw new InvalidOperationException("Set Administration:From date."));
+        var to = DateTimeOffset.Parse(app.Configuration["Administration:To"] ?? DateTimeOffset.UtcNow.ToString("O"));
+        int enqueued = await app.Services.GetRequiredService<ClickHouseProjector>().BackfillRangeAsync(from, to, default);
+        app.Logger.LogInformation("Backfill enqueued {Count} events for ClickHouse between {From} and {To}", enqueued, from, to);
+        return;
+    }
+    if (args.Contains("--reconcile-clickhouse"))
+    {
+        string projectId = app.Configuration["Administration:ProjectId"] ?? throw new InvalidOperationException("Set Administration:ProjectId to reconcile ClickHouse.");
+        var reconciliation = await app.Services.GetRequiredService<ClickHouseProjector>().ReconcileAsync(projectId, default);
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(reconciliation));
+        return;
+    }
     if (args.Contains("--migrate") || args.Contains("--provision")) return;
     if (strict) await ProtectionCertificates.VerifyStoredKeys(app.Services);
 }
@@ -258,6 +312,7 @@ app.MapGet("/health/ready", async (IServiceProvider services, CancellationToken 
     }
     return Results.Ok(new { status = "ready", profile = storage.Profile });
 });
+app.MapGet("/metrics", () => Results.Text(EventTrackingTelemetry.GeneratePrometheusMetrics(), "text/plain; version=0.0.4; charset=utf-8"));
 app.MapTrackingApi();
 app.Run();
 

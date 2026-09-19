@@ -37,10 +37,10 @@ public static class ApiEndpoints
         {
             app.MapGet(prefix + "/analytics/events", (DateTimeOffset? from, DateTimeOffset? to,
                 HttpContext context, IEventStore store) => Summary(context, store, from, to, null))
-                .WithMetadata(new ProjectPermission("read")).Produces<EventSummary[]>();
+                .WithMetadata(new ProjectPermission("read")).RequireRateLimiting("analytics").Produces<EventSummary[]>();
             app.MapGet(prefix + "/analytics/users/{userId}", (string userId, DateTimeOffset? from, DateTimeOffset? to,
                 HttpContext context, IEventStore store) => Summary(context, store, from, to, userId))
-                .WithMetadata(new ProjectPermission("read")).Produces<EventSummary[]>();
+                .WithMetadata(new ProjectPermission("read")).RequireRateLimiting("analytics").Produces<EventSummary[]>();
         }
     }
 

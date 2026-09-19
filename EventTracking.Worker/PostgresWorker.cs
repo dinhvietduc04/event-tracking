@@ -31,16 +31,27 @@ public sealed class PostgresWorker(PostgresStore store, ClickHouseProjector clic
         {
             try
             {
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                 int projected = await store.ProcessBatchAsync(stoppingToken);
                 int mirrored = await clickHouse.ProcessBatchAsync(stoppingToken);
-                if (projected > 0 || mirrored > 0) continue;
+                if (projected > 0 || mirrored > 0)
+                {
+                    logger.LogInformation("Worker projected {Projected} inbox events and mirrored {Mirrored} ClickHouse events in {ElapsedMs}ms",
+                        projected, mirrored, stopwatch.ElapsedMilliseconds);
+                    continue;
+                }
+                if (stopwatch.ElapsedMilliseconds > options.PollIntervalMilliseconds * 5)
+                    logger.LogWarning("Worker batch took {ElapsedMs}ms with no progress; possible downstream stall", stopwatch.ElapsedMilliseconds);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception error) when (error is NpgsqlException or TimeoutException)
+            catch (Exception error) when (error is NpgsqlException or TimeoutException or HttpRequestException or IOException or TaskCanceledException)
             {
-                logger.LogWarning("Inbox processing failed with {ErrorType}; transaction rolled back and work remains pending", error.GetType().Name);
+                // Transient downstream failure: transaction rolled back, work remains pending.
+                // Anything else (e.g. profile mismatch) still crashes so misconfiguration surfaces fast.
+                logger.LogWarning(error, "Worker batch failed with {ErrorType}; retrying", error.GetType().Name);
             }
-            await Task.Delay(options.PollIntervalMilliseconds, stoppingToken);
+            try { await Task.Delay(options.PollIntervalMilliseconds, stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }
 }

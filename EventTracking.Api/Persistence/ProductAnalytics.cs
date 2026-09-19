@@ -37,8 +37,8 @@ public sealed class ProductAnalytics(NpgsqlDataSource source)
         await using var c = await source.OpenConnectionAsync(ct);
         const string sql = """
             WITH cohort AS (SELECT user_id,(occurred_at AT TIME ZONE 'UTC')::date d FROM events WHERE project_id=$1 AND user_id IS NOT NULL AND event_type=$2 AND (occurred_at AT TIME ZONE 'UTC')::date >= $3 AND (occurred_at AT TIME ZONE 'UTC')::date < $4 GROUP BY user_id,(occurred_at AT TIME ZONE 'UTC')::date),
-            sizes AS (SELECT d,count(*) n FROM cohort GROUP BY d), returns AS (SELECT c.d,((e.occurred_at AT TIME ZONE 'UTC')::date-c.d)::int day,count(DISTINCT c.user_id) n FROM cohort c JOIN events e ON e.project_id=$1 AND e.user_id=c.user_id AND e.event_type=$5 AND (e.occurred_at AT TIME ZONE 'UTC')::date>=c.d GROUP BY c.d,day)
-            SELECT s.d,r.day,s.n,r.n FROM sizes s JOIN returns r ON r.d=s.d ORDER BY s.d,r.day
+            sizes AS (SELECT d,count(*) n FROM cohort GROUP BY d), returns AS (SELECT c.d,((e.occurred_at AT TIME ZONE 'UTC')::date-c.d)::int AS "day",count(DISTINCT c.user_id) n FROM cohort c JOIN events e ON e.project_id=$1 AND e.user_id=c.user_id AND e.event_type=$5 AND (e.occurred_at AT TIME ZONE 'UTC')::date>=c.d GROUP BY c.d,"day")
+            SELECT s.d,r."day",s.n,r.n FROM sizes s JOIN returns r ON r.d=s.d ORDER BY s.d,r."day"
             """;
         await using var q = DatabaseSql.Command(c, null, sql, project, entry, start, end, returned);
         var rows = new List<RetentionResult>(); await using var r = await q.ExecuteReaderAsync(ct);

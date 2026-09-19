@@ -11,6 +11,8 @@ public interface IEventStore
 
 public sealed class InMemoryEventStore : IEventStore
 {
+    // Volatile/demo mode only: bound memory so a long-lived process cannot OOM.
+    private const int MaxEvents = 10_000;
     private readonly List<TrackedEvent> _events = [];
     private readonly Lock _lock = new();
 
@@ -18,6 +20,7 @@ public sealed class InMemoryEventStore : IEventStore
     {
         lock (_lock)
         {
+            if (_events.Count >= MaxEvents) _events.RemoveRange(0, _events.Count - MaxEvents + 1);
             _events.Add(trackedEvent);
         }
     }

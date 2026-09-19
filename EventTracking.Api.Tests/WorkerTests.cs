@@ -103,6 +103,66 @@ public sealed class WorkerTests
         await Assert.ThrowsAsync<StorageProfileException>(() => distributed.Services.GetRequiredService<PostgresStore>().ProcessBatchAsync(default));
     }
 
+    [PostgresFact]
+    public async Task BrokerOutbox_PublishesAndCompletesDelivery_Idempotently()
+    {
+        await using var db = await PostgresTestDatabase.Create();
+        var settings = new Dictionary<string, string?> { ["RabbitMq:Enabled"] = "true" };
+        using var app = db.App("Distributed", seed: true, settings);
+        using var client = app.CreateClient().WithKey(TestProjects.IngestA);
+        var store = app.Services.GetRequiredService<PostgresStore>();
+
+        var eventId = Guid.NewGuid();
+        var payload = new { eventId, eventType = "broker_test", schemaVersion = 1, occurredAt = DateTimeOffset.UtcNow };
+        Assert.Equal(HttpStatusCode.Accepted,
+            (await client.PostAsJsonAsync("/v1/events/batch", new { events = new[] { payload } })).StatusCode);
+        Assert.Equal(1, await db.Scalar("SELECT count(*) FROM broker_outbox WHERE completed_at IS NULL AND dead_lettered_at IS NULL"));
+
+        // Publish via an injectable transport (no live broker required).
+        List<BrokerMessage> published = [];
+        int count = await store.PublishBrokerOutboxAsync(message => { published.Add(message); return Task.CompletedTask; }, default);
+        Assert.Equal(1, count);
+        Assert.Equal(eventId, Assert.Single(published).EventId);
+
+        // Consumer commits projection, then a duplicate redelivery stays idempotent.
+        await store.CompleteBrokerDeliveryAsync(published[0], default);
+        Assert.Equal(1, await db.Scalar("SELECT count(*) FROM events WHERE project_id='a'"));
+        await store.CompleteBrokerDeliveryAsync(published[0], default);
+        Assert.Equal(1, await db.Scalar("SELECT count(*) FROM events WHERE project_id='a'"));
+        Assert.Equal(1, await db.Scalar("SELECT count(*) FROM broker_outbox WHERE completed_at IS NOT NULL"));
+    }
+
+    [PostgresFact]
+    public async Task BrokerOutage_LeavesOutboxPending_AndRecoversOnRetry()
+    {
+        await using var db = await PostgresTestDatabase.Create();
+        var settings = new Dictionary<string, string?> { ["RabbitMq:Enabled"] = "true" };
+        using var app = db.App("Distributed", seed: true, settings);
+        using var client = app.CreateClient().WithKey(TestProjects.IngestA);
+        var store = app.Services.GetRequiredService<PostgresStore>();
+
+        var eventId = Guid.NewGuid();
+        var payload = new { eventId, eventType = "outage_test", schemaVersion = 1, occurredAt = DateTimeOffset.UtcNow };
+        Assert.Equal(HttpStatusCode.Accepted,
+            (await client.PostAsJsonAsync("/v1/events/batch", new { events = new[] { payload } })).StatusCode);
+
+        // Simulate a broker outage: publish throws before any marker commits.
+        await Assert.ThrowsAsync<IOException>(() => store.PublishBrokerOutboxAsync(
+            _ => throw new IOException("broker unreachable"), default));
+        Assert.Equal(1, await db.Scalar(
+            "SELECT count(*) FROM broker_outbox WHERE published_at IS NULL AND completed_at IS NULL"));
+
+        // Recovery: next poll publishes and the consumer completes the delivery.
+        List<BrokerMessage> recovered = [];
+        Assert.Equal(1, await store.PublishBrokerOutboxAsync(
+            message => { recovered.Add(message); return Task.CompletedTask; }, default));
+        await store.CompleteBrokerDeliveryAsync(Assert.Single(recovered), default);
+        Assert.Equal(1, await db.Scalar("SELECT count(*) FROM events WHERE project_id='a'"));
+        var status = await store.OutboxStatusAsync("a", default);
+        Assert.Equal(0, status.Pending);
+        Assert.Equal(1, status.Completed);
+    }
+
     private static async Task Until(Func<Task<bool>> condition, params WorkerProcess[] workers)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
