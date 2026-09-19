@@ -53,6 +53,28 @@ public sealed class EventRecord
     public string Properties { get; set; } = "{}";
 }
 
+public sealed class ClickHouseProjectionRecord
+{
+    public string ProjectId { get; set; } = "";
+    public Guid EventId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+}
+
+public sealed class BrokerOutboxRecord
+{
+    public string ProjectId { get; set; } = "";
+    public Guid EventId { get; set; }
+    public string Payload { get; set; } = "{}";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? PublishedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public DateTimeOffset? NextAttemptAt { get; set; }
+    public DateTimeOffset? DeadLetteredAt { get; set; }
+    public int Attempts { get; set; }
+    public string? LastError { get; set; }
+}
+
 public sealed class StorageState
 {
     public int Id { get; set; }
@@ -122,6 +144,8 @@ public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> option
     public DbSet<EventIdentity> Identities => Set<EventIdentity>();
     public DbSet<InboxRecord> Inbox => Set<InboxRecord>();
     public DbSet<EventRecord> Events => Set<EventRecord>();
+    public DbSet<ClickHouseProjectionRecord> ClickHouseProjection => Set<ClickHouseProjectionRecord>();
+    public DbSet<BrokerOutboxRecord> BrokerOutbox => Set<BrokerOutboxRecord>();
     public DbSet<StorageState> State => Set<StorageState>();
     public DbSet<SavedQueryView> SavedViews => Set<SavedQueryView>();
     public DbSet<EventSchemaRecord> EventSchemas => Set<EventSchemaRecord>();
@@ -199,6 +223,20 @@ public sealed class TrackingDbContext(DbContextOptions<TrackingDbContext> option
             e.HasIndex(x => new { x.ProjectId, x.UserId, x.OccurredAt, x.EventId });
             e.HasIndex(x => x.Properties).HasMethod("gin");
             e.HasOne<EventIdentity>().WithOne().HasForeignKey<EventRecord>(x => new { x.ProjectId, x.EventId }).OnDelete(DeleteBehavior.Cascade);
+        });
+        model.Entity<ClickHouseProjectionRecord>(e =>
+        {
+            e.ToTable("clickhouse_projection"); e.HasKey(x => new { x.ProjectId, x.EventId });
+            e.HasIndex(x => new { x.CompletedAt, x.CreatedAt });
+            e.HasOne<EventIdentity>().WithOne().HasForeignKey<ClickHouseProjectionRecord>(x => new { x.ProjectId, x.EventId }).OnDelete(DeleteBehavior.Cascade);
+        });
+        model.Entity<BrokerOutboxRecord>(e =>
+        {
+            e.ToTable("broker_outbox"); e.HasKey(x => new { x.ProjectId, x.EventId });
+            e.Property(x => x.Payload).HasColumnType("jsonb"); e.Property(x => x.LastError).HasMaxLength(1000);
+            e.Property(x => x.Attempts).HasDefaultValue(0);
+            e.HasIndex(x => new { x.CompletedAt, x.DeadLetteredAt, x.NextAttemptAt, x.CreatedAt });
+            e.HasOne<EventIdentity>().WithOne().HasForeignKey<BrokerOutboxRecord>(x => new { x.ProjectId, x.EventId }).OnDelete(DeleteBehavior.Cascade);
         });
         model.Entity<StorageState>(e => { e.ToTable("storage_state"); e.HasKey(x => x.Id); e.Property(x => x.Id).ValueGeneratedNever(); });
         foreach (var entity in model.Model.GetEntityTypes())

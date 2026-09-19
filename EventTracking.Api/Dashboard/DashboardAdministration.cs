@@ -10,6 +10,7 @@ namespace EventTracking.Api.Dashboard;
 public sealed record MembershipChange(string? Username, string? Role);
 public sealed record KeyIssue(string[]? Permissions);
 public sealed record KeyReference(string? KeyHash);
+public sealed record DeadLetterReplay(Guid? EventId);
 
 public static class DashboardAdministration
 {
@@ -64,10 +65,52 @@ public static class DashboardAdministration
                 "SELECT id,occurred_at,actor,action,target,details::text FROM audit_records WHERE project_id=$1 ORDER BY occurred_at DESC,id DESC LIMIT 100", projectId);
             await using var reader = await command.ExecuteReaderAsync(ct);
             List<object> entries = [];
-            while (await reader.ReadAsync(ct)) entries.Add(new { id = reader.GetGuid(0), occurredAt = reader.GetDateTime(1),
+            while (await reader.ReadAsync(ct)) entries.Add(new { id = reader.GetGuid(0), occurredAt = reader.GetFieldValue<DateTimeOffset>(1),
                 actor = reader.GetString(2), action = reader.GetString(3), target = reader.GetString(4), details = JsonSerializer.Deserialize<JsonElement>(reader.GetString(5)) });
             return Results.Ok(entries);
         });
+        group.MapGet("/dead-letters", async (string projectId, NpgsqlDataSource source, CancellationToken ct) =>
+        {
+            await using var connection = await source.OpenConnectionAsync(ct);
+            await using var command = DatabaseSql.Command(connection, null,
+                "SELECT event_id,created_at,attempts,last_error,dead_lettered_at FROM broker_outbox WHERE project_id=$1 AND dead_lettered_at IS NOT NULL ORDER BY dead_lettered_at DESC,event_id LIMIT 100", projectId);
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            List<object> entries = [];
+            while (await reader.ReadAsync(ct)) entries.Add(new { eventId = reader.GetGuid(0), createdAt = reader.GetFieldValue<DateTimeOffset>(1), attempts = reader.GetInt32(2), error = reader.IsDBNull(3) ? null : reader.GetString(3), deadLetteredAt = reader.GetFieldValue<DateTimeOffset>(4) });
+            return Results.Ok(entries);
+        });
+        group.MapPost("/dead-letters/replay", (DeadLetterReplay? request, string projectId, HttpContext context, NpgsqlDataSource source, CancellationToken ct) =>
+            Mutate(context, projectId, source, async (connection, transaction) =>
+            {
+                if (request?.EventId is { } id && id != Guid.Empty)
+                {
+                    await using var replay = DatabaseSql.Command(connection, transaction,
+                        "UPDATE broker_outbox SET dead_lettered_at=NULL,published_at=NULL,next_attempt_at=now(),attempts=0,last_error=NULL WHERE project_id=$1 AND event_id=$2 AND dead_lettered_at IS NOT NULL", projectId, id);
+                    if (await replay.ExecuteNonQueryAsync(ct) == 0) return Results.NotFound();
+                    await AuditLog.Write(connection, transaction, context.UserId().ToString(), projectId, "broker.dead_letter.replayed", id.ToString(), new { }, ct);
+                    return Results.NoContent();
+                }
+                else
+                {
+                    await using var replay = DatabaseSql.Command(connection, transaction,
+                        "UPDATE broker_outbox SET dead_lettered_at=NULL,published_at=NULL,next_attempt_at=now(),attempts=0,last_error=NULL WHERE project_id=$1 AND dead_lettered_at IS NOT NULL", projectId);
+                    int count = await replay.ExecuteNonQueryAsync(ct);
+                    await AuditLog.Write(connection, transaction, context.UserId().ToString(), projectId, "broker.dead_letters.replayed_all", projectId, new { count }, ct);
+                    return Results.Ok(new { replayed = count });
+                }
+            }, ct));
+        group.MapGet("/subjects/{userId}/export", async (string projectId, string userId, PostgresStore store, CancellationToken ct) =>
+        {
+            var data = await store.ExportSubjectAsync(projectId, userId, ct);
+            return Results.Ok(data);
+        });
+        group.MapPost("/subjects/{userId}/delete", (string projectId, string userId, HttpContext context, NpgsqlDataSource source, CancellationToken ct) =>
+            Mutate(context, projectId, source, async (connection, transaction) =>
+            {
+                int deleted = await PostgresStore.DeleteSubject(connection, transaction, projectId, userId, ct);
+                await AuditLog.Write(connection, transaction, context.UserId().ToString(), projectId, "subject.deleted", userId, new { deletedEvents = deleted }, ct);
+                return Results.Ok(new { deletedEvents = deleted });
+            }, ct));
     }
 
     private static Task<IResult> ChangeMember(MembershipChange request, string project, HttpContext context, NpgsqlDataSource source, CancellationToken ct)
@@ -153,7 +196,7 @@ public static class DashboardAdministration
             if (await locked.ExecuteScalarAsync(ct) is null) return Results.NotFound();
         await using (var access = DatabaseSql.Command(connection, transaction,
             "SELECT count(*) FROM project_memberships m JOIN dashboard_users u ON u.id=m.user_id WHERE m.project_id=$1 AND m.user_id=$2 AND m.can_manage AND NOT u.disabled AND u.session_version=$3",
-            project, context.UserId(), int.Parse(context.User.FindFirstValue("session_version")!)))
+            project, context.UserId(), int.TryParse(context.User.FindFirstValue("session_version"), out int sessionVersion) ? sessionVersion : -1))
             if (Convert.ToInt64(await access.ExecuteScalarAsync(ct)) != 1) return Results.Problem(statusCode: 403, title: "Administrator access is required.");
         var result = await action(connection, transaction);
         if (result is IStatusCodeHttpResult { StatusCode: >= 200 and < 300 }) await transaction.CommitAsync(ct);

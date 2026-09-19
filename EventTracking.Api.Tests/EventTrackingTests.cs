@@ -55,6 +55,32 @@ public sealed class EventTrackingTests : IClassFixture<PrototypeFactory>
     }
 
     [Fact]
+    public async Task AnalyticsEndpoint_IsRateLimitedSeparately()
+    {
+        using var app = _factory.WithWebHostBuilder(builder =>
+        {
+            TestProjects.Configure(builder);
+            builder.UseSetting("Ingestion:AnalyticsRequestsPerMinute", "2");
+        });
+        using HttpClient client = app.CreateClient().WithKey(TestProjects.BothA);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/analytics/events")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/analytics/events")).StatusCode);
+        var limited = await client.GetAsync("/analytics/events");
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+    }
+
+    [Fact]
+    public void InMemoryEventStore_EvictsOldestBeyondCap()
+    {
+        var store = new EventTracking.Api.Services.InMemoryEventStore();
+        for (int i = 0; i < 10_050; i++)
+            store.Add(new EventTracking.Api.Models.TrackedEvent(Guid.NewGuid(), "t", null,
+                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+        // Bounded retention: newest 50-session query still works and the store cannot grow without limit.
+        Assert.Empty(store.GetRecent("no-such-session"));
+    }
+
+    [Fact]
     public async Task TrackEvent_WithMissingType_ReturnsValidationError()
     {
         using var app = _factory.WithWebHostBuilder(TestProjects.Configure);

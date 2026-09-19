@@ -189,6 +189,27 @@ public sealed class DashboardTests
     }
 
     [PostgresFact]
+    public async Task PutRequiresCsrf_AndSucceedsWithToken()
+    {
+        await using var db = await PostgresTestDatabase.Create();
+        using var app = db.App("Hosted", settings: Settings);
+        using var client = Client(app);
+        await Login(client);
+        var viewId = Guid.NewGuid();
+        var body = new { name = "csrf-view", definition = new { } };
+        // Cookie without a CSRF token must be rejected on state-changing PUT.
+        using (var forged = new HttpRequestMessage(HttpMethod.Put, $"/dashboard-api/projects/a/views/{viewId:D}")
+            { Content = JsonContent.Create(body) })
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.SendAsync(forged)).StatusCode);
+        // Same request with a token succeeds.
+        var token = await client.GetFromJsonAsync<JsonElement>("/dashboard-api/auth/token");
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/dashboard-api/projects/a/views/{viewId:D}")
+            { Content = JsonContent.Create(body) };
+        request.Headers.Add("X-CSRF-Token", token.GetProperty("token").GetString());
+        Assert.Equal(HttpStatusCode.NoContent, (await client.SendAsync(request)).StatusCode);
+    }
+
+    [PostgresFact]
     public async Task DemoActionsReachDashboard_WithStablePurchaseRetriesAndScopedFilters()
     {
         foreach (string profile in new[] { "Hosted", "Distributed" })

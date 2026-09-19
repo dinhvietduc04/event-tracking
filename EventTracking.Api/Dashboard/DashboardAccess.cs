@@ -72,7 +72,8 @@ public static class DashboardAccess
                 context.Items[typeof(ProjectContext)] = new ProjectContext(projectId, allowed ? ["read", "ingest"] : ["read"]);
             }
         }
-        if (HttpMethods.IsPost(context.Request.Method))
+        if (HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method)
+            || HttpMethods.IsDelete(context.Request.Method) || HttpMethods.IsPatch(context.Request.Method))
         {
             try { await context.RequestServices.GetRequiredService<IAntiforgery>().ValidateRequestAsync(context); }
             catch (AntiforgeryValidationException)

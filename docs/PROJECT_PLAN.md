@@ -264,6 +264,8 @@ Proposed versioned payload; this is not the current API contract:
 
 **Depends on:** stable analytics contracts and representative data from milestones 4 and 6, plus the production controls in milestone 5.
 
+**Status:** in progress. The opt-in local projection work record and retry-safe `ReplacingMergeTree` projector are implemented; benchmark fixtures, bounded backfill, reconciliation evidence, and any feature-flagged ClickHouse read path remain required before completion. See [milestone 7](MILESTONE_7.md).
+
 - Benchmark PostgreSQL first using a reproducible dataset and recorded hardware. Add ClickHouse as a learning milestone, or prioritize it when PostgreSQL misses agreed query/ingestion targets after ordinary tuning.
 - Design event ordering/partition keys and a durable PostgreSQL-to-ClickHouse projection work record. Commit canonical PostgreSQL events and projection work atomically; keep the ClickHouse checkpoint retryable.
 - Backfill a fixed range and overlap it safely with live projection. Compare both databases by project, event type, and time bucket before switching reads behind a feature flag.
