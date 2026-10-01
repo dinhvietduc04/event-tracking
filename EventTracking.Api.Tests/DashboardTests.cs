@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using EventTracking.Api.Dashboard;
-using EventTracking.Api.Persistence;
+using EventTracking.Api.Endpoints.Dashboard;
+using EventTracking.Api.Infrastructure.Analytics;
 using EventTracking.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;

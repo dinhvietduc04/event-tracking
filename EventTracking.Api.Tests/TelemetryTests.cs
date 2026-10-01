@@ -1,15 +1,10 @@
 using System.Net;
 using EventTracking.Persistence;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace EventTracking.Api.Tests;
 
-public sealed class TelemetryTests : IClassFixture<PrototypeFactory>
+public sealed class TelemetryTests
 {
-    private readonly PrototypeFactory _factory;
-
-    public TelemetryTests(PrototypeFactory factory) => _factory = factory;
-
     [Fact]
     public void Metrics_IncrementAndGenerateValidPrometheusFormat()
     {
@@ -35,10 +30,11 @@ public sealed class TelemetryTests : IClassFixture<PrototypeFactory>
         Assert.Contains($"events_dead_lettered_total{{project_id=\"{testProject}\"}} 1", metrics);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task MetricsEndpoint_ReturnsPrometheusTextFormat()
     {
-        using var app = _factory.WithWebHostBuilder(TestProjects.Configure);
+        await using var db = await PostgresTestDatabase.Create();
+        using var app = db.App("Hosted");
         using var client = app.CreateClient();
 
         var response = await client.GetAsync("/metrics");

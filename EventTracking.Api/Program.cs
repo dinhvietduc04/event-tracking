@@ -1,10 +1,11 @@
 using System.Threading.RateLimiting;
-using EventTracking.Api;
-using EventTracking.Api.Access;
-using EventTracking.Api.Dashboard;
-using EventTracking.Api.Demo;
-using EventTracking.Api.Persistence;
-using EventTracking.Api.Services;
+using EventTracking.Api.Auth;
+using EventTracking.Api.Endpoints.Dashboard;
+using EventTracking.Api.Endpoints.Tracking;
+using EventTracking.Api.Infrastructure.Analytics;
+using EventTracking.Api.Infrastructure.Database;
+using EventTracking.Api.Middleware;
+using EventTracking.Api.Validation;
 using EventTracking.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -48,8 +49,6 @@ clickHouse.Validate();
 var rabbitMq = builder.Configuration.GetSection("RabbitMq").Get<RabbitMqOptions>() ?? new();
 rabbitMq.Validate();
 ProductionSecurity.Validate(builder.Configuration, storage, strict, operatorMode, api: true);
-if (operatorMode && !storage.Durable)
-    throw new InvalidOperationException("Database operator commands require a durable profile.");
 builder.Services.AddSingleton(storage);
 builder.Services.AddSingleton(clickHouse);
 builder.Services.AddSingleton(rabbitMq);
@@ -57,9 +56,10 @@ builder.Services.AddHttpClient(
     nameof(ClickHouseProjector),
     client => client.Timeout = TimeSpan.FromSeconds(30)
 );
-bool dashboard =
-    storage.Durable
-    && builder.Configuration.GetValue("Dashboard:Enabled", builder.Environment.IsDevelopment());
+bool dashboard = builder.Configuration.GetValue(
+    "Dashboard:Enabled",
+    builder.Environment.IsDevelopment()
+);
 DashboardAccess.Configure(builder.Services, builder.Environment.IsDevelopment());
 if (builder.Configuration.GetValue<bool>("ReverseProxy:TrustForwardedProto"))
 {
@@ -150,18 +150,7 @@ if (storage.Durable)
     builder.Services.AddSingleton<DashboardAccounts>();
     builder.Services.AddSingleton<SharedLoginLimiter>();
 }
-else
-    builder.Services.AddSingleton<IProjectKeys, ProjectKeys>();
 builder.Services.AddSingleton<EventValidation>();
-builder.Services.AddSingleton<IEventQueue, EventQueue>();
-builder.Services.AddSingleton<IEventStore, InMemoryEventStore>();
-if (
-    !storage.Durable
-    || builder.Environment.IsDevelopment()
-    || builder.Configuration.GetValue<bool>("DemoShop:Enabled")
-)
-    builder.Services.AddHostedService<EventIngestionWorker>(); // The local shop retains its independent prototype store.
-builder.Services.AddSingleton<DemoShop>();
 int permits = builder.Configuration.GetValue("Ingestion:RequestsPerMinute", 600);
 if (permits < 1)
     throw new InvalidOperationException("Ingestion:RequestsPerMinute must be positive.");
@@ -263,10 +252,6 @@ builder
     });
 
 var app = builder.Build();
-if (storage.Profile == "Distributed" && builder.Configuration["Storage:WorkerEnabled"] is not null)
-    app.Logger.LogWarning(
-        "Storage:WorkerEnabled is obsolete. Run EventTracking.Worker separately to project Distributed events."
-    );
 _ = app.Services.GetRequiredService<IProjectKeys>();
 _ = app.Services.GetRequiredService<EventValidation>();
 if (storage.Durable)
@@ -463,10 +448,6 @@ if (storage.Durable)
     if (strict)
         await ProtectionCertificates.VerifyStoredKeys(app.Services);
 }
-else
-    app.Logger.LogWarning(
-        "Explicit Volatile profile: accepted events are lost on restart and retries double-count."
-    );
 
 app.UseExceptionHandler();
 if (app.Configuration.GetValue<bool>("ReverseProxy:TrustForwardedProto"))
@@ -515,14 +496,6 @@ if (dashboard)
     app.MapGet("/dashboard", () => Results.Redirect("/dashboard/index.html"));
     app.MapDashboard();
 }
-if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("DemoShop:Enabled"))
-{
-    app.UseStaticFiles();
-    if (!dashboard)
-        app.MapGet("/", () => Results.Redirect("/shop/"));
-    app.MapGet("/shop/", () => Results.Redirect("/shop/index.html"));
-    app.MapDemoShop();
-}
 
 app.MapGet(
     "/health/live",
@@ -532,7 +505,7 @@ app.MapGet(
             {
                 status = "alive",
                 profile = storage.Profile,
-                durability = storage.Durable ? "durable" : "volatile",
+                durability = "durable",
             }
         )
 );
@@ -540,22 +513,19 @@ app.MapGet(
     "/health/ready",
     async (IServiceProvider services, CancellationToken ct) =>
     {
-        if (storage.Durable)
-        {
-            await using var connection = await services
-                .GetRequiredService<NpgsqlDataSource>()
-                .OpenConnectionAsync(ct);
-            await using var command = DatabaseSql.Command(
-                connection,
-                null,
-                "SELECT profile FROM storage_state WHERE id=1"
+        await using var connection = await services
+            .GetRequiredService<NpgsqlDataSource>()
+            .OpenConnectionAsync(ct);
+        await using var command = DatabaseSql.Command(
+            connection,
+            null,
+            "SELECT profile FROM storage_state WHERE id=1"
+        );
+        if ((string?)await command.ExecuteScalarAsync(ct) != storage.Profile)
+            return Results.Problem(
+                statusCode: 503,
+                title: "Storage profile has changed; restart with matching configuration."
             );
-            if ((string?)await command.ExecuteScalarAsync(ct) != storage.Profile)
-                return Results.Problem(
-                    statusCode: 503,
-                    title: "Storage profile has changed; restart with matching configuration."
-                );
-        }
         return Results.Ok(new { status = "ready", profile = storage.Profile });
     }
 );

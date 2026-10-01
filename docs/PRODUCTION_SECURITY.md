@@ -57,7 +57,7 @@ The Vercel image still opts into forwarded protocol, so configure `ReverseProxy_
 
 Production requests require HTTPS, except health routes used by internal probes. Insecure API requests return `400`; they are not redirected with credentials. The existing cookies remain Secure/HttpOnly/SameSite=Strict, POSTs require CSRF tokens, and HSTS is enabled for eligible HTTPS hosts. Host filtering uses the explicit `AllowedHosts` list.
 
-Runtime startup rejects Volatile storage, automatic migration/profile transitions, the prototype shop, wildcard hosts, operator connection settings, dashboard bootstrap passwords, project key provisioning settings, and any `Administration` settings. Remove those environment entries entirely from the runtime deployment. Empty operator/administration entries can still be rejected; the provided scripts remove them explicitly when restoring an absent variable.
+Storage options accept only the `Distributed` and `Hosted` profiles. Runtime startup rejects automatic migration/profile transitions, wildcard hosts, operator connection settings, dashboard bootstrap passwords, project key provisioning settings, and any `Administration` settings. Remove those environment entries entirely from the runtime deployment. Empty operator/administration entries can still be rejected; the provided scripts remove them explicitly when restoring an absent variable.
 
 Worker runtime configuration uses `DOTNET_ENVIRONMENT=Production`, `Storage__Profile=Distributed`, and `ConnectionStrings__Tracking` with a separate **worker login**. It needs no dashboard secrets or certificate. The worker rejects operator/provisioning settings, automatic migration, and profile transitions too.
 

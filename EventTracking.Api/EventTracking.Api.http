@@ -4,7 +4,7 @@
 
 GET {{baseUrl}}/health/live
 
-### Generate keys with scripts/Start-Development.ps1; keep substituted secrets uncommitted.
+### Generate keys with scripts/New-LocalEnvironment.ps1; keep substituted secrets uncommitted.
 POST {{baseUrl}}/v1/events
 Authorization: Bearer {{ingestKey}}
 Content-Type: application/json

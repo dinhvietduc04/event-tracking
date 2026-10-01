@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using EventTracking.Persistence;
 using EventTracking.Worker;
+using EventTracking.Worker.Workers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -14,7 +15,6 @@ public sealed class WorkerTests
 {
     [Theory]
     [InlineData("Hosted", false, false)]
-    [InlineData("Volatile", false, false)]
     [InlineData("Distributed", true, false)]
     [InlineData("Distributed", false, true)]
     public void WorkerRejectsUnsupportedProfilesAndAdministrativeSettings(

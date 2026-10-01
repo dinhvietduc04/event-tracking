@@ -1,14 +1,12 @@
 # Event tracking API v1 (milestone 2)
 
-The default `Storage:Profile=Distributed` uses PostgreSQL for projects, hashed credentials, event identities, inbox records and queryable events. `Hosted` commits queryable events during the request. Select a profile explicitly in deployment configuration; a database failure never falls back to memory. `Volatile` retains the milestone 1 local prototype for regression tests and the legacy development script.
+The default `Storage:Profile=Distributed` uses PostgreSQL for projects, hashed credentials, event identities, inbox records and queryable events. `Hosted` commits queryable events during the request. Select a profile explicitly in deployment configuration; a database failure never falls back to memory.
 
 ## Authentication
 
-Every general ingestion and analytics route, including legacy aliases, requires `Authorization: Bearer <key>`. Keys belong to exactly one project and carry `ingest` and/or `read` permission. Project identity always comes from the credential. Payload `projectId` and other unknown v1 fields are rejected; query parameters cannot select another project.
+Every general ingestion and analytics route, including the analytics aliases without `/v1`, requires `Authorization: Bearer <key>`. Keys belong to exactly one project and carry `ingest` and/or `read` permission. Project identity always comes from the credential. Payload `projectId` and other unknown v1 fields are rejected; query parameters cannot select another project.
 
 Durable profiles authenticate against PostgreSQL on every request. Only SHA-256 hashes are stored. Revocation takes effect for subsequent authentication checks without restarting. A request already authorized may complete. Development startup can insert configured projects/keys, but never overwrites existing permissions or revocation. Production provisioning is an explicit operator command. See [milestone 2 setup](MILESTONE_2.md).
-
-The development shop retains its isolated, reserved `demo-shop` in-memory store and cookie-based session feed. It is not a production collection endpoint and its orders/telemetry are not covered by the general API's durability guarantee. Project keys cannot access the shop's reserved project.
 
 ## Single and batch ingestion
 
@@ -55,7 +53,6 @@ The batch response is `{ "events": [receipt, ...] }`, preserving request order. 
 | --- | --- | --- |
 | Distributed | `202`, `status: accepted` | Identity and inbox are committed in PostgreSQL; worker projection may still be pending |
 | Hosted | `200`, `status: persisted` | Identity and queryable event are committed together; no inbox record is created |
-| Volatile | `202`, `durability: volatile` | Local memory only; single-event prototype, no durable deduplication or batch endpoint |
 
 Clients must handle both durable success statuses. Retry with the same ID and payload after transport failures or retryable responses. Identical concurrent retries, including across API instances, count once and return `alreadyAccepted: true` with the original server receipt time. Changing the normalized payload for an existing `(projectId,eventId)` returns `409` with the conflicting `eventId`.
 
@@ -126,6 +123,6 @@ Run the operator `--retain` command on a schedule; it has no always-running sche
 
 Profile choice is stored in PostgreSQL. To transition, stop old instances, drain pending work and explicitly set `Storage__AllowProfileTransition=true` for the transition, then remove it. A pending inbox prevents the transition. Old-mode instances reject new writes after the recorded profile changes. Changing configuration is never an automatic response to a database outage.
 
-Legacy analytics routes without `/v1` remain authenticated aliases. Legacy `POST /events` generates an ID and defaults missing occurrence time to now, returns the selected profile's receipt and applies all current validation/limits. It cannot deduplicate caller retries because its payload has no caller event ID. Its old `id` response field is now `eventId`, the old nonexistent status URL is removed, and legacy query `to` is now exclusive. Migrate producers to `/v1/events`.
+Analytics routes without `/v1` remain authenticated aliases of the `/v1` routes. Producers must use `/v1/events` (or `/v1/events/batch`) with a caller-assigned `eventId` so retries deduplicate.
 
 OpenAPI is available in Development at `/openapi/v1.json` and describes Bearer access and both success responses. `/health/live` is process liveness; `/health/ready` checks PostgreSQL and the configured profile. Structured logs record request status, project/event counts and processing progress without keys or raw payloads. No production availability guarantee is made at milestone 2.

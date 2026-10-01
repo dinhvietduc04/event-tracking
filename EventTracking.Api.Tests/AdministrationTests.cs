@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using EventTracking.Api.Dashboard;
+using EventTracking.Api.Endpoints.Dashboard;
 using EventTracking.Persistence;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
