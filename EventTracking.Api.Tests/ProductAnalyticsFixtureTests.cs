@@ -1,4 +1,4 @@
-using EventTracking.Api.Persistence;
+using EventTracking.Api.Infrastructure.Analytics;
 using Npgsql;
 
 namespace EventTracking.Api.Tests;

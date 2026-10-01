@@ -1,4 +1,5 @@
 using EventTracking.Persistence;
+using EventTracking.Worker.Workers;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using OpenTelemetry.Metrics;
@@ -29,7 +30,7 @@ public static class WorkerApplication
         );
         if (storage.Profile != "Distributed")
             throw new InvalidOperationException(
-                "The worker requires Storage:Profile=Distributed; Hosted and Volatile run without this process."
+                "The worker requires Storage:Profile=Distributed; Hosted runs without this process."
             );
         if (storage.MigrateOnStartup || storage.AllowProfileTransition)
             throw new InvalidOperationException(

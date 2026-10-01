@@ -1,8 +1,8 @@
-# event-tracking — Repo Guide (for someone who knows little C#)
+# event-tracking — Repo Guide
 
 > What this repo is: a small "Mixpanel-like" analytics platform. Apps send **events** (e.g. `page_view`, `purchase_completed`) to an API. The API stores them durably in **PostgreSQL**, a separate **Worker** processes them in the background, and a **React dashboard** shows charts, event lists, and user timelines. There is also a fake demo shop to generate test traffic.
 
-## 0. C# crash-course (just enough to read this repo)
+## 0. C# terms
 
 | C# thing you will see | What it means |
 |---|---|
@@ -48,7 +48,6 @@ Storage profiles (important!):
 |---|---|---|
 | `Distributed` (default, local Docker) | `Storage__Profile` | API commits to `inbox` table → returns `202`. Worker later claims + projects into `events` table. Durable, retry-safe. |
 | `Hosted` (Vercel/Neon) | same setting | API writes directly to `events` → returns `200`. No worker needed. |
-| `Volatile` (legacy demo only) | same setting | In-memory only, lost on restart. Only for the old `/shop/` prototype. |
 
 Rule: DB failure never auto-switches profiles. Changing profile on an existing DB requires an explicit drained transition (`storage_state` table is checked on startup).
 
@@ -73,19 +72,18 @@ Rule: DB failure never auto-switches profiles. Changing profile on an existing D
 
 | File / folder | Purpose (plain English) |
 |---|---|
-| `Program.cs` | **Read this first.** Wires everything: reads `Storage`/`ClickHouse`/`RabbitMq` config, validates production security, registers DI services (`NpgsqlDataSource`, `TrackingDbContext`, `PostgresStore`, `DashboardAccounts`, ...), sets up rate limiting (ingestion vs analytics vs dashboard-login buckets), OpenTelemetry metrics/tracing, middleware order (`ExceptionHandler → ForwardedHeaders → Routing → RequestBoundary → Auth → ProjectAccess → RateLimiter`), routes (`/health/*`, `/metrics`, tracking API, dashboard, demo shop), and `--operator` CLI commands (`--migrate`, `--provision`, `--revoke`, `--dashboard-admin`, `--delete-subject`, `--backfill-clickhouse`, ...). |
-| `ApiEndpoints.cs` | Legacy/volatile + health/metrics route definitions (Minimal API style). |
+| `Program.cs` | **Read this first.** Wires everything: reads `Storage`/`ClickHouse`/`RabbitMq` config, validates production security, registers DI services (`NpgsqlDataSource`, `TrackingDbContext`, `PostgresStore`, `DashboardAccounts`, ...), sets up rate limiting (ingestion vs analytics vs dashboard-login buckets), OpenTelemetry metrics/tracing, middleware order (`ExceptionHandler → ForwardedHeaders → Routing → RequestBoundary → Auth → ProjectAccess → RateLimiter`), routes (`/health/*`, `/metrics`, tracking API, dashboard), and `--operator` CLI commands (`--migrate`, `--provision`, `--revoke`, `--dashboard-admin`, `--delete-subject`, `--backfill-clickhouse`, ...). |
+| `ApiEndpoints.cs` | Durable `POST /v1/events` + health/metrics route definitions (Minimal API style). |
 | `DurableEndpoints.cs` | Real durable v1 API: `POST /v1/events` (ingest), `GET /v1/...` (queries, timelines, saved views, schemas). Enforces per-project `ingest` vs `read` permissions. |
 | `EventTracking.Api.http` | Scratch HTTP requests for Visual Studio / Rider (manual testing). |
 | `appsettings.json` / `appsettings.Development.json` | Base config (logging, allowed hosts). Real secrets come from env vars / `.env`, not these files. |
 | `Properties/` | `launchSettings.json`: local `dotnet run` ports and profiles. |
 | `Access/` | Auth: `ProjectAccess.cs` = middleware that reads `Authorization: Bearer <key>`, hashes it, looks up `credentials` table, attaches project ID + permissions. `PostgresKeys.cs` = DB-backed key store (`IProjectKeys`). |
-| `Services/` | Pure business logic, no HTTP: `EventValidation.cs` (schema/size checks), `EventQueue.cs` + `InMemoryEventStore.cs` + `EventIngestionWorker.cs` (only for Volatile prototype), `RequestBoundary.cs` (request size/timeout guard), `JsonNumbers.cs` (safe JSON number handling). |
-| `Models/` | DTOs (Data Transfer Objects): `TrackEventRequest`, `TrackedEvent`, `EventSummary` — the shapes that go in/out of JSON. |
-| `Persistence/` | Query side: `PostgresAnalytics.cs` (counts, breakdowns, funnels over `events` table), `ProductAnalytics.cs` (demo-shop specific), `DatabaseSetup.cs` (startup migrate/provision/profile check). Raw SQL + Npgsql here for speed. |
+| `Services/` | Pure business logic, no HTTP: `EventValidation.cs` (schema/size checks), `RequestBoundary.cs` (request size/timeout guard), `JsonNumbers.cs` (safe JSON number handling). |
+| `Models/` | DTOs (Data Transfer Objects): `EventSummary` and related analytics shapes returned by the query endpoints. |
+| `Persistence/` | Query side: `PostgresAnalytics.cs` (counts, breakdowns, funnels over `events` table), `ProductAnalytics.cs` (durable funnel/retention/session/revenue reports), `DatabaseSetup.cs` (startup migrate/provision/profile check). Raw SQL + Npgsql here for speed. |
 | `Dashboard/` | Cookie-login dashboard backend: `DashboardEndpoints.cs` (login/logout, projects, members, audit, saved views), `DashboardAccounts.cs` (password hashing, sessions), `DashboardAccess.cs` (cookie auth middleware), `DashboardAdministration.cs` + `DashboardOperator.cs` (admin CLI), `ProtectionCertificates.cs` + `SharedLoginLimiter.cs` (DataProtection keys + brute-force protection). |
-| `Demo/DemoShop.cs` | Fake store backend (`/shop/` API): cart, checkout, price validation. Deliberately **separate** from durable analytics. |
-| `wwwroot/` | Static files served as-is: `wwwroot/shop/` = legacy demo store (plain HTML/JS), `wwwroot/dashboard/` = **built** React app output (copied in by `Dockerfile` from `npm run build`; not source). |
+| `wwwroot/` | Static files served as-is: `wwwroot/dashboard/` = **built** React app output (copied in by `Dockerfile` from `npm run build`; not source). |
 
 ### `EventTracking.Persistence/` — database layer (shared library)
 
@@ -132,12 +130,11 @@ Not part of the .NET solution. `package.json`: `react@19`, `vite@7`, `typescript
 
 | File | Covers |
 |---|---|
-| `EventTrackingTests.cs`, `V1ContractTests.cs` | Ingest validation, idempotency (same `eventId` retry = dedupe), conflict (same ID + different payload = 409), read filters/limits. |
-| `PostgresTests.cs` + `PostgresTestDatabase.cs` | Integration tests against real Postgres (connection from `TEST_POSTGRES_CONNECTION`). Creates/drops `m2_test_*` DBs. Skipped if env var missing. |
+| `PostgresTests.cs` + `PostgresTestDatabase.cs` | Ingest validation, idempotency (same `eventId` retry = dedupe), conflict (same ID + different payload = 409), read filters/limits against real Postgres (connection from `TEST_POSTGRES_CONNECTION`). Creates/drops `m2_test_*` DBs. Skipped if env var missing. |
 | `WorkerTests.cs`, `BrokerTests.cs` | Inbox projection + outbox publish/retry/dead-letter logic. |
 | `DashboardTests.cs`, `AdministrationTests.cs`, `ProductionSecurityTests.cs` | Login, memberships, admin grants, TLS/role enforcement. |
-| `DemoShopTests.cs`, `ProductAnalyticsFixtureTests.cs`, `SubjectDataTests.cs`, `TelemetryTests.cs` | Shop isolation, analytics fixtures, GDPR delete-subject, metrics. |
-| `PrototypeFactory.cs`, `TestProjects.cs` | Shared `WebApplicationFactory` + seeded projects/keys. |
+| `ProductAnalyticsFixtureTests.cs`, `SubjectDataTests.cs`, `TelemetryTests.cs` | Analytics fixtures, GDPR delete-subject, metrics. |
+| `TestProjects.cs` | Seeded projects/keys shared by the Postgres-backed test hosts. |
 
 Run: `dotnet test EventTracking.slnx` with Compose Postgres up and `TEST_POSTGRES_CONNECTION` set (see README). CI always sets it.
 
@@ -149,7 +146,6 @@ Run: `dotnet test EventTracking.slnx` with Compose Postgres up and `TEST_POSTGRE
 | `Send-DemoEvents.ps1` | Sends valid/invalid/conflicting/retry events to two isolated projects to prove dedupe + isolation. |
 | `Initialize-Dashboard.ps1` | Migrates + creates dashboard account for old envs → `dashboard-login.local.json`. |
 | `Migrate-Database.ps1` | Runs EF migrations (local/hosted/remote variants). Called by `migrate-db.cmd`. |
-| `Start-Development.ps1` | Runs API in Volatile mode for the legacy shop demo (no DB). |
 | `Test-Load.ps1`, `Test-Soak.ps1`, `Test-Failure.ps1` | Load / long-run / kill-DB-and-recover checks. |
 | `Test-HostedSpike.ps1`, `Test-ProductionProfile.ps1`, `Test-ClickHouseBenchmark.ps1`, `Test-ClickHouseReconciliation.ps1`, `Test-RestoreDrill.ps1` | Hosted smoke, prod-config audit, ClickHouse perf + row-count reconciliation, backup/restore drill. |
 | `Backup-Database.ps1`, `Restore-Database.ps1` | `pg_dump` / `pg_restore` wrappers. |
@@ -173,10 +169,10 @@ Run: `dotnet test EventTracking.slnx` with Compose Postgres up and `TEST_POSTGRE
 9. **Operator CLI inside the API**: `dotnet EventTracking.Api.dll --migrate/--provision/--revoke/...` runs admin work then exits (no HTTP). Keeps ops code next to the schema it touches.
 10. **Observability built-in**: OpenTelemetry meters/traces (`Persistence/Telemetry.cs`), `/metrics` Prometheus text, `/health/live` (process) vs `/health/ready` (DB + profile check). CI + `Test-*` scripts assert on these.
 11. **Defense in depth (prod)**: `ProductionSecurity.cs` enforces `VerifyFull` TLS, `GSS Encryption Mode=Disable`, separate owner/runtime Postgres roles, encrypted DataProtection keys (`ProtectStoredKeys`), HSTS + HTTPS-only (except `/health`), audited admin actions (`AuditLog.cs`).
-12. **Testing pyramid**: fast unit/contract tests (no DB) → Postgres integration (`m2_test_*` DBs) → Playwright browser smoke → `scripts/Test-*` chaos/load/soak drills. `PrototypeFactory.cs` keeps tests hermetic.
+12. **Testing pyramid**: fast unit tests (no DB) → Postgres integration (`m2_test_*` DBs) → Playwright browser smoke → `scripts/Test-*` chaos/load/soak drills.
 
 ## 4. How to read / run it (suggested order)
 
 1. `README.md` → `docs/API_V1.md` → `EventTracking.Api/Program.cs` (wiring) → `DurableEndpoints.cs` (routes) → `Persistence/PostgresStore.cs` (`AcceptAsync`, then `ProcessBatchAsync`) → `Worker/PostgresWorker.cs` (poll loop) → `Dashboard/src/main.tsx` (UI calls same endpoints).
-2. Run: `./scripts/New-LocalEnvironment.ps1` → `docker compose up --build -d` → `./scripts/Send-DemoEvents.ps1` → open `http://localhost:5191/dashboard/` (login from `.env`) and `http://localhost:5191/shop/index.html`.
+2. Run: `./scripts/New-LocalEnvironment.ps1` → `docker compose up --build -d` → `./scripts/Send-DemoEvents.ps1` → open `http://localhost:5191/dashboard/` (login from `.env`).
 3. Test: set `TEST_POSTGRES_CONNECTION` (README snippet) → `dotnet test EventTracking.slnx` → `npm run build; npm test` in `EventTracking.Dashboard`.

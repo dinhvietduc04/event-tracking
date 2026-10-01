@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using EventTracking.Api.Dashboard;
+using EventTracking.Api.Endpoints.Dashboard;
 using EventTracking.Persistence;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;

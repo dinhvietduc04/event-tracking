@@ -30,7 +30,7 @@ Open [Signal](http://localhost:5191/dashboard/) and sign in using `DASHBOARD_USE
 
 For an older local environment without dashboard credentials, start its PostgreSQL service, then run `./scripts/Initialize-Dashboard.ps1`. It applies the new local migration and creates an account, saving credentials to ignored `dashboard-login.local.json`. It explicitly uses loopback PostgreSQL, even if `.env` has a hosted connection override. Rebuild the API/worker afterward. See [milestone 4 setup, upgrade and verification](docs/MILESTONE_4.md), including this workspace's port 5299 setup.
 
-The homepage opens the analytics dashboard whenever it is enabled; signed-out visitors see its login screen. The Vercel image enables the dashboard explicitly. Other Production deployments can set `Dashboard__Enabled=true`; Development enables it for durable profiles. Its new demo writes durable project events; the original `/shop/` prototype described below remains independent.
+The homepage opens the analytics dashboard whenever it is enabled; signed-out visitors see its login screen. The Vercel image enables the dashboard explicitly. Other Production deployments can set `Dashboard__Enabled=true`; Development enables it by default. Its demo shop writes durable project events.
 
 ## Storage modes
 
@@ -38,17 +38,10 @@ The homepage opens the analytics dashboard whenever it is enabled; signed-out vi
 | --- | --- | --- |
 | Distributed (default) | `202` after PostgreSQL inbox commit | Separate worker process claims and projects events transactionally |
 | Hosted | `200` after PostgreSQL event commit | Queryable during the request; no essential background worker or new inbox |
-| Volatile | Explicit legacy local prototype | Memory-only, no durable deduplication |
 
-Both PostgreSQL modes share validation, credentials, event identity and queries. Database failure never switches profiles. Changing an existing database's profile requires an explicit drained transition. Production readiness remains gated by milestone 5. The [Vercel/Neon spike](docs/HOSTING_SPIKE.md) records successful hosted health checks; runtime TLS, cold starts and provider quotas remain pending.
+Both profiles share validation, credentials, event identity and queries. Database failure never switches profiles. Changing an existing database's profile requires an explicit drained transition. Production readiness remains gated by milestone 5. The [Vercel/Neon spike](docs/HOSTING_SPIKE.md) records successful hosted health checks; runtime TLS, cold starts and provider quotas remain pending.
 
-The API no longer processes durable inbox work itself; `Storage__WorkerEnabled` / `WORKER_ENABLED` are obsolete. Start/stop the `worker` service to control projection. For a Hosted Compose setup, start only `postgres api` and stop any existing workers; the worker refuses Hosted databases. Apply migrations using the API operator command before starting a worker outside Compose. Migrations live in `EventTracking.Persistence`; milestone 4 adds `DashboardAccess` for accounts, memberships and project names, and `SharedDataProtectionKeys` for login/CSRF continuity across instances and restarts.
-
-## Local shop
-
-Open [Little Things](http://localhost:5191/shop/index.html) to add mugs, totes and notebooks to a mock cart and place a fake order. Browser activity emits `page_view`, `product_added` and `checkout_started`; the backend validates catalog prices/quantities before emitting `purchase_completed`. No payment or personal details are involved.
-
-The shop deliberately retains its independent volatile business state and session feed. Its order deduplication lasts only within the process, and its telemetry is isolated from general project analytics. It is enabled in Development by default; it does not demonstrate PostgreSQL durability. `scripts/Start-Development.ps1` runs the explicit milestone 1 Volatile profile for this legacy demo without a database.
+The API never processes durable inbox work itself; start/stop the `worker` service to control projection. For a Hosted Compose setup, start only `postgres api` and stop any existing workers; the worker refuses Hosted databases. Apply migrations using the API operator command before starting a worker outside Compose. Migrations live in `EventTracking.Persistence`; milestone 4 adds `DashboardAccess` for accounts, memberships and project names, and `SharedDataProtectionKeys` for login/CSRF continuity across instances and restarts.
 
 ## Test
 
@@ -60,6 +53,6 @@ $env:TEST_POSTGRES_CONNECTION = "Host=127.0.0.1;Port=$($local.POSTGRES_PORT);Dat
 dotnet test EventTracking.slnx
 ```
 
-PostgreSQL tests create and drop uniquely named `m2_test_*` databases; point them at a local disposable server with database-creation privileges. Without `TEST_POSTGRES_CONNECTION`, those tests are explicitly skipped and the prototype regressions still run. CI supplies PostgreSQL and runs both suites. See the milestone notes for verified results.
+PostgreSQL tests create and drop uniquely named `m2_test_*` databases; point them at a local disposable server with database-creation privileges. Without `TEST_POSTGRES_CONNECTION`, those tests are explicitly skipped. CI supplies PostgreSQL and runs the full suite. See the milestone notes for verified results.
 
 Frontend development requires Node 22 (Node 20.19+ also works): run `npm ci`, `npm run build`, and `npm test` from `EventTracking.Dashboard`. Both API Dockerfiles build the frontend automatically. The [milestone 4 guide](docs/MILESTONE_4.md) covers browser smoke tests and local hot reload.

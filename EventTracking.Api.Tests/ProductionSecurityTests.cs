@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
-using EventTracking.Api.Dashboard;
+using EventTracking.Api.Endpoints.Dashboard;
 using EventTracking.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
@@ -33,7 +33,6 @@ public sealed class ProductionSecurityTests
     [InlineData("Dashboard:Bootstrap:Password", "bootstrap-secret-must-not-leak")]
     [InlineData("Administration:Password", "recovery-secret-must-not-leak")]
     [InlineData("ProjectAccess:Keys:0:KeyHash", "legacy-seed")]
-    [InlineData("DemoShop:Enabled", "true")]
     [InlineData("AllowedHosts", "*")]
     [InlineData("ReverseProxy:TrustForwardedProto", "true")]
     public void ProductionRejectsUnsafeRuntimeConfiguration(string setting, string value)
@@ -78,14 +77,9 @@ public sealed class ProductionSecurityTests
         Assert.True(ProductionSecurity.Required("Staging"));
         Assert.False(ProductionSecurity.Required("Testing"));
         Assert.False(ProductionSecurity.Required("Development"));
+        // Only durable profiles are valid; the prototype profile is rejected at options validation.
         Assert.Throws<InvalidOperationException>(() =>
-            ProductionSecurity.Validate(
-                Config(Safe),
-                new() { Profile = "Volatile" },
-                true,
-                false,
-                true
-            )
+            new StorageOptions { Profile = "Volatile" }.Validate(Config(Safe))
         );
         Assert.Throws<InvalidOperationException>(() =>
             ProductionSecurity.Connection(Config(Safe), true, true)
@@ -206,7 +200,7 @@ public sealed class ProductionSecurityTests
             await Denied(api.Source, "UPDATE audit_records SET actor='tampered'");
             await Denied(api.Source, "UPDATE data_protection_keys SET xml='tampered'");
             await Denied(api.Source, "DELETE FROM event_identity");
-            await Denied(api.Source, "UPDATE storage_state SET profile='Volatile'");
+            await Denied(api.Source, "UPDATE storage_state SET profile='Hosted'");
             // Detect and then remove accidental column grants as well as table grants.
             await db.Execute($"GRANT UPDATE(password_hash) ON dashboard_users TO {api.Name}");
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
